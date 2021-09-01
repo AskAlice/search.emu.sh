@@ -1,0 +1,358 @@
+[
+  {
+    "assetName": "0x",
+    "assetSymbol": "ZRX"
+  },
+  {
+    "assetName": "1inch",
+    "assetSymbol": "1INCH"
+  },
+  {
+    "assetName": "Aave",
+    "assetSymbol": "AAVE"
+  },
+  {
+    "assetName": "Alchemy",
+    "assetSymbol": "Pay"
+  },
+  {
+    "assetName": "Algorand",
+    "assetSymbol": "ALGO"
+  },
+  {
+    "assetName": "Amp",
+    "assetSymbol": "AMP"
+  },
+  {
+    "assetName": "Ampleforth",
+    "assetSymbol": "Governance"
+  },
+  {
+    "assetName": "Ankr",
+    "assetSymbol": "ANKR"
+  },
+  {
+    "assetName": "Augur",
+    "assetSymbol": "REP"
+  },
+  {
+    "assetName": "Axie",
+    "assetSymbol": "Infinity"
+  },
+  {
+    "assetName": "Balancer",
+    "assetSymbol": "BAL"
+  },
+  {
+    "assetName": "Bancor",
+    "assetSymbol": "Network"
+  },
+  {
+    "assetName": "Band",
+    "assetSymbol": "Protocol"
+  },
+  {
+    "assetName": "BarnBridge",
+    "assetSymbol": "BOND"
+  },
+  {
+    "assetName": "Basic",
+    "assetSymbol": "Attention"
+  },
+  {
+    "assetName": "Bitcoin",
+    "assetSymbol": "BTC"
+  },
+  {
+    "assetName": "Bitcoin",
+    "assetSymbol": "Cash"
+  },
+  {
+    "assetName": "Cardano",
+    "assetSymbol": "ADA"
+  },
+  {
+    "assetName": "Cartesi",
+    "assetSymbol": "CTSI"
+  },
+  {
+    "assetName": "Celo",
+    "assetSymbol": "CGLD"
+  },
+  {
+    "assetName": "Chiliz",
+    "assetSymbol": "CHZ"
+  },
+  {
+    "assetName": "Clover",
+    "assetSymbol": "Finance"
+  },
+  {
+    "assetName": "Compound",
+    "assetSymbol": "COMP"
+  },
+  {
+    "assetName": "Cosmos",
+    "assetSymbol": "ATOM"
+  },
+  {
+    "assetName": "Curve",
+    "assetSymbol": "DAO"
+  },
+  {
+    "assetName": "Dai",
+    "assetSymbol": "DAI"
+  },
+  {
+    "assetName": "Monero",
+    "assetSymbol": "XMR"
+  },
+  {
+    "assetName": "Bitcoin Cash",
+    "assetSymbol": "BCH"
+  },
+  {
+    "assetName": "Dash",
+    "assetSymbol": "DASH"
+  },
+  {
+    "assetName": "Dogecoin",
+    "assetSymbol": "DOGE"
+  },
+  {
+    "assetName": "Enjin",
+    "assetSymbol": "Coin"
+  },
+  {
+    "assetName": "Enzyme",
+    "assetSymbol": "MLN"
+  },
+  {
+    "assetName": "EOS",
+    "assetSymbol": "EOS"
+  },
+  {
+    "assetName": "Ethereum",
+    "assetSymbol": "ETH"
+  },
+  {
+    "assetName": "Ethereum",
+    "assetSymbol": "Classic"
+  },
+  {
+    "assetName": "Harvest",
+    "assetSymbol": "Finance"
+  },
+  {
+    "assetName": "Fetch.ai",
+    "assetSymbol": "FET"
+  },
+  {
+    "assetName": "Filecoin",
+    "assetSymbol": "FIL"
+  },
+  {
+    "assetName": "Gitcoin",
+    "assetSymbol": "GTC"
+  },
+  {
+    "assetName": "The",
+    "assetSymbol": "Graph"
+  },
+  {
+    "assetName": "iExec",
+    "assetSymbol": "RLC"
+  },
+  {
+    "assetName": "Internet",
+    "assetSymbol": "Computer"
+  },
+  {
+    "assetName": "IoTeX",
+    "assetSymbol": "IOTX"
+  },
+  {
+    "assetName": "Keep",
+    "assetSymbol": "Network"
+  },
+  {
+    "assetName": "Kyber",
+    "assetSymbol": "Network"
+  },
+  {
+    "assetName": "Livepeer",
+    "assetSymbol": "(LPT)"
+  },
+  {
+    "assetName": "Litecoin",
+    "assetSymbol": "LTC"
+  },
+  {
+    "assetName": "Loom",
+    "assetSymbol": "Network"
+  },
+  {
+    "assetName": "Loopring",
+    "assetSymbol": "LRC"
+  },
+  {
+    "assetName": "Mask",
+    "assetSymbol": "Network"
+  },
+  {
+    "assetName": "Mirror",
+    "assetSymbol": "Protocol"
+  },
+  {
+    "assetName": "NKN",
+    "assetSymbol": "NKN"
+  },
+  {
+    "assetName": "NuCypher",
+    "assetSymbol": "NU"
+  },
+  {
+    "assetName": "Numeraire",
+    "assetSymbol": "NMR"
+  },
+  {
+    "assetName": "OMG",
+    "assetSymbol": "Network"
+  },
+  {
+    "assetName": "Orchid",
+    "assetSymbol": "OXT"
+  },
+  {
+    "assetName": "Origin",
+    "assetSymbol": "Token"
+  },
+  {
+    "assetName": "Orion",
+    "assetSymbol": "Protocol"
+  },
+  {
+    "assetName": "Paxos",
+    "assetSymbol": "Standard"
+  },
+  {
+    "assetName": "PlayDapp",
+    "assetSymbol": "PLA"
+  },
+  {
+    "assetName": "Polkadot",
+    "assetSymbol": "DOT"
+  },
+  {
+    "assetName": "Polymath",
+    "assetSymbol": "POLY"
+  },
+  {
+    "assetName": "Polygon",
+    "assetSymbol": "MATIC"
+  },
+  {
+    "assetName": "Quant",
+    "assetSymbol": "QNT"
+  },
+  {
+    "assetName": "QuickSwap",
+    "assetSymbol": "QUICK"
+  },
+  {
+    "assetName": "Rai",
+    "assetSymbol": "Reflex"
+  },
+  {
+    "assetName": "Rally",
+    "assetSymbol": "RLY"
+  },
+  {
+    "assetName": "Ren",
+    "assetSymbol": "REN"
+  },
+  {
+    "assetName": "Request",
+    "assetSymbol": "REQ"
+  },
+  {
+    "assetName": "SKALE",
+    "assetSymbol": "SKL"
+  },
+  {
+    "assetName": "Solana",
+    "assetSymbol": "SOL"
+  },
+  {
+    "assetName": "Stellar",
+    "assetSymbol": "Lumens"
+  },
+  {
+    "assetName": "STORJ",
+    "assetSymbol": "STORJ"
+  },
+  {
+    "assetName": "SushiSwap",
+    "assetSymbol": "SUSHI"
+  },
+  {
+    "assetName": "Synthetix",
+    "assetSymbol": "Network"
+  },
+  {
+    "assetName": "Tellor",
+    "assetSymbol": "TRB"
+  },
+  {
+    "assetName": "TrueFi",
+    "assetSymbol": "TRU"
+  },
+  {
+    "assetName": "Tezos",
+    "assetSymbol": "XTZ"
+  },
+  {
+    "assetName": "TerraUSD",
+    "assetSymbol": "UST"
+  },
+  {
+    "assetName": "Tether",
+    "assetSymbol": "USDT"
+  },
+  {
+    "assetName": "Tezos",
+    "assetSymbol": "XTZ"
+  },
+  {
+    "assetName": "Tribe",
+    "assetSymbol": "TRIBE"
+  },
+  {
+    "assetName": "UMA",
+    "assetSymbol": "UMA"
+  },
+  {
+    "assetName": "Uniswap",
+    "assetSymbol": "UNI"
+  },
+  {
+    "assetName": "USD",
+    "assetSymbol": "Coin"
+  },
+  {
+    "assetName": "Wrapped",
+    "assetSymbol": "Bitcoin"
+  },
+  {
+    "assetName": "Wrapped",
+    "assetSymbol": "LUNA"
+  },
+  {
+    "assetName": "yearn.finance",
+    "assetSymbol": "YFI"
+  },
+  {
+    "assetName": "Zcash",
+    "assetSymbol": "ZEC"
+  }
+]

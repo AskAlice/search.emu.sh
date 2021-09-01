@@ -1,0 +1,15 @@
+{
+  "extends": "./node_modules/fastify-tsconfig/tsconfig.json",
+  "compilerOptions": {
+    "lib": ["es2020", "dom"],
+    "module": "commonjs",
+    "outDir": "dist",
+    "target": "es2020",
+    "noImplicitAny": false,
+    "strict": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*.ts"]
+}
