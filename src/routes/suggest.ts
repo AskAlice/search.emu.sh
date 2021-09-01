@@ -9,6 +9,10 @@ import NodeCache from 'node-cache';
 const cache = new NodeCache();
 const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   fastify.get('/suggest', async function (request: any, reply) {
+    let useApiKeys: boolean = false; // query param to actually utilize the API keys specified in .env
+    if (request.query?.useApiKeys === 'true') {
+      useApiKeys = true;
+    }
     // console.log(request.headers);
     const searchRegex = request.query?.q?.match(/(?<hasBang>\!?)(?<bang>(?<=\!)[\w\d-_]+)?([\s\+]+)?(?<search>.*)?/);
     const search = searchRegex?.groups.search;
@@ -16,6 +20,7 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
     const bangSlug = searchRegex?.groups.bang;
     const searchingBang = typeof bangSlug === 'string' && typeof search !== 'undefined';
     const googleQuery = searchingBang ? { ...request.query, q: search } : request.query;
+    delete googleQuery.useApiKeys; // used internally, don't pass this to google
     console.log('hi');
     console.log(`search ${search},bangSlug ${bangSlug},googleQuery ${JSON.stringify(googleQuery)}`);
     const cryptoSearch = request.query?.q?.match(/(?<coef>\d+(?:\.\d+)?)?\s?(?<symbol>.*)?/);
@@ -58,7 +63,7 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
     const suggestRelevance = request?.query?.type === 'json' ? 'suggestRelevance' : 'google:suggestrelevance';
     const results = [];
     const cryptocompareKey = process?.env?.CRYPTOCOMPARE_KEY || false;
-    if (assets.length > 0 && cryptocompareKey) {
+    if (assets.length > 0 && useApiKeys && cryptocompareKey) {
       let opt: AxiosRequestConfig = {
         method: 'GET',
         url: `https://min-api.cryptocompare.com/data/price?fsym=${assets[0].assetSymbol}&tsyms=USD&api_key=${cryptocompareKey}`,

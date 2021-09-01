@@ -6,6 +6,10 @@ const client = new LanguageServiceClient();
 
 const search: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   fastify.get('/search', async (request: any, reply) => {
+    let useApiKeys: boolean = false; // query param to actually utilize the API keys specified in .env
+    if (request.query?.useApiKeys === 'true') {
+      useApiKeys = true;
+    }
     const redirect = (url) => {
       console.log(url);
       reply.header('Referrer-Policy', 'no-referrer').redirect(302, url);
@@ -24,7 +28,7 @@ const search: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
       console.log(`searchRegex groups: ${JSON.stringify(searchRegex.groups)}`);
       const search = searchRegex.groups.search;
       let classifyResult: any = { categories: [] };
-      if (typeof process?.env?.GOOGLE_APPLICATION_CREDENTIALS !== 'undefined' && process?.env?.GOOGLE_APPLICATION_CREDENTIALS?.length) {
+      if (useApiKeys && typeof process?.env?.GOOGLE_APPLICATION_CREDENTIALS !== 'undefined' && process?.env?.GOOGLE_APPLICATION_CREDENTIALS?.length) {
         const document: google.cloud.language.v1.IDocument = {
           content: `${search} ${search} ${search} ${search} ${search} ${search} ${search} ${search} ${search} ${search}
                   ${search} ${search} ${search} ${search} ${search} ${search} ${search} ${search} ${search} ${search}`,
