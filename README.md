@@ -61,7 +61,7 @@ VALUES (8192,
 ## Adding an implementation that is live and maintained by me
 
 Follow the instructions above, but use the below query.
-Note this won't use the keys for CryptoCompare or the Google Cloud natural language API. Please don't set the query param to use my API keys as I could end up getting billed for it personally.
+Note this won't use the keys for CryptoCompare or the Google Cloud natural language API. Please don't set the `useApiKeys` query param to use my API keys as I could end up getting billed for it personally.
 
 ```sql
 INSERT INTO "keywords" ("id", "short_name", "keyword", "favicon_url", "url", "safe_for_autoreplace", "originating_url", "date_created", "usage_count", "input_encodings", "suggest_url", "prepopulate_id", "created_by_policy", "last_modified", "sync_guid", "alternate_urls", "image_url", "search_url_post_params", "suggest_url_post_params", "image_url_post_params", "new_tab_url", "last_visited", "created_from_play_api")
