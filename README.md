@@ -5,6 +5,8 @@ This app is written in Fastify and acts as a:
 - search suggestion provider for google chrome
 - search engine
 
+If you simply want to use this without setting it up locally, refer below to the section [Adding an implementation that is live and maintained by me](https://github.com/section-io/search.emu.sh/tree/master#adding-an-implementation-that-is-live-and-maintained-by-me)
+
 ## Running locally
 
 Refer to [.env.example](./.env.example) to set up api keys.
