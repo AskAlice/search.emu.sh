@@ -8,8 +8,11 @@ This app is written in Fastify and acts as a:
 ## Running locally
 
 Refer to [.env.example](./.env.example) to set up api keys.
+
 You will need to make an app on cloud.google.com if you want to use the Natural Language API to classify text.
+
 You will need to make an API key for CryptoCompare if you want to get crypto prices.
+
 
 ```
 npm i
