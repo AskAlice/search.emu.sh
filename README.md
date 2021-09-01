@@ -63,7 +63,8 @@ VALUES (8192,
 Follow the instructions above, but use the below query.
 Note this won't use the keys for CryptoCompare or the Google Cloud natural language API. Please don't set the `useApiKeys` query param to use my API keys as I could end up getting billed for it personally.
 
-If you use this and are in AU, you might want to add this environment to an AU PoP
+If you use this and are in AU, you might want to add this environment to an AU PoP via the "Environment Location Optimizer Strategy"
+
 https://aperture.section.io/ops#/environment/14592
 
 ```sql
