@@ -27,7 +27,7 @@ npm run dev
 ## Adding the suggestion engine to your local chrome installation
 
 - close chrome entirely
-- [connect to the SQLite database at a location like](https://stackoverflow.com/a/16742333/643875}
+- [connect to the SQLite database at a location like](https://stackoverflow.com/a/16742333/643875)
   `%localappdata%\Google\Chrome\User Data\<your chrome profile>\Web Data` using a SQL client of your choice (I prefer HeidiSQL)
 
 - The following query will insert the local search engine into your browser. Note you will have to have this running locally.
