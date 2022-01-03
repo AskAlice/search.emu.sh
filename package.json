@@ -29,6 +29,7 @@
     "@google-cloud/language": "^4.2.6",
     "axios": "^0.21.1",
     "cross-env": "^7.0.3",
+    "dohjs": "^0.3.2",
     "fastify": "^3.0.0",
     "fastify-autoload": "^3.3.1",
     "fastify-cli": "^2.13.0",

@@ -4,21 +4,34 @@ import axios, { AxiosRequestConfig } from 'axios';
 import suggestions from '../suggestions';
 import cryptoAssets from '../suggestions/cryptoAssets.json';
 import maxmind, { CityResponse } from 'maxmind';
-import dig from 'node-dig-dns';
+import doh from 'dohjs';
+const resolver = new doh.DohResolver('https://1.1.1.1/dns-query');
 import NodeCache from 'node-cache';
 const cache = new NodeCache();
+
+/* Notes 
+
+Possible to send header data with suggestions? https://github.dev/chromium/chromium/blob/e590866de188fbe1efe182b3be1db42155f55667/components/omnibox/browser/search_suggestion_parser.cc#L518-L529
+
+*/
 const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   fastify.get('/suggest', async function (request: any, reply) {
+    let useApiKeys: boolean = false; // query param to actually utilize the API keys specified in .env
+    if (request.query?.useApiKeys === 'true') {
+      useApiKeys = true;
+    }
     // console.log(request.headers);
     const searchRegex = request.query?.q?.match(/(?<hasBang>\!?)(?<bang>(?<=\!)[\w\d-_]+)?([\s\+]+)?(?<search>.*)?/);
     const search = searchRegex?.groups.search;
+    // let hasBang = searchRegex.groups.hasBang === '!' ? true : false;
     const q = request.query?.q;
     const bangSlug = searchRegex?.groups.bang;
     const searchingBang = typeof bangSlug === 'string' && typeof search !== 'undefined';
     const googleQuery = searchingBang ? { ...request.query, q: search } : request.query;
+    delete googleQuery.useApiKeys; // used internally, don't pass this to google
     console.log('hi');
     console.log(`search ${search},bangSlug ${bangSlug},googleQuery ${JSON.stringify(googleQuery)}`);
-    const cryptoSearch = request.query?.q?.match(/(?<coef>\d+(?:\.\d+)?)?\s?(?<symbol>.*)?/);
+    const cryptoSearch = request.query?.q.trim()?.match(/(?<coef>\d+(?:\.\d+)?)?\s?(?<symbol>.*)?/);
     let assets =
       cryptoSearch?.groups?.symbol?.length > 2
         ? cryptoAssets.filter((a) => a.assetSymbol.toLowerCase() === cryptoSearch?.groups?.symbol?.toLowerCase()).length > 0
@@ -56,9 +69,11 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
     const suggestSubtypes = request?.query?.type === 'json' ? 'suggestSubtypes' : 'google:suggestsubtypes';
     const suggestDetail = request?.query?.type === 'json' ? 'suggestDetail' : 'google:suggestdetail';
     const suggestRelevance = request?.query?.type === 'json' ? 'suggestRelevance' : 'google:suggestrelevance';
-    const results = [];
+    const headerTexts = request?.query?.type === 'json' ? 'headerTexts' : 'google:headertexts';
+    const clientData = request?.query?.type === 'json' ? 'clientData' : 'google:clientdata';
+    let results = [];
     const cryptocompareKey = process?.env?.CRYPTOCOMPARE_KEY || false;
-    if (assets.length > 0 && cryptocompareKey) {
+    if (assets.length > 0 && useApiKeys && cryptocompareKey) {
       let opt: AxiosRequestConfig = {
         method: 'GET',
         url: `https://min-api.cryptocompare.com/data/price?fsym=${assets[0].assetSymbol}&tsyms=USD&api_key=${cryptocompareKey}`,
@@ -102,70 +117,62 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
     }
 
     const isDig = q.match(
-      /(?<domain>(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9])\s(?<DNS>A|AAAA|ALIAS|CNAME|MX|NS|PTR|SOA|SRV|TXT)/i
+      /(dig\s)?(?<domain>(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9])\s(?<DNS>A|AAAA|ALIAS|CNAME|MX|NS|PTR|SOA|SRV|TXT)(\s@)?(?<ns>(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9])?/i
     );
     if (isDig?.length) {
       console.log('MATCHED');
-      const d = await dig([isDig.groups.domain, isDig.groups.DNS]);
-      console.log(d);
-      let geolocation: any = '';
-      if (d?.answer && d?.answer[0] && d?.answer[0]?.value && maxmind.validate(d?.answer[0].value)) {
-        const lookup = await maxmind.open<CityResponse>('./src/GeoLite2-City.mmdb');
-        geolocation = lookup.get(d.answer[0].value);
-        console.log(geolocation);
-      }
-      let values = [];
-      d.answer.forEach((a) => {
-        if (typeof a.value === 'string') {
-          values.push(a?.value);
-        } else {
-          if (a?.value?.server) values.push(a?.value?.server);
-          if (a?.value?.domain) values.push(a?.value?.domain);
+      const response = await resolver.query(isDig.groups.domain, isDig.groups.DNS);
+      const lookup = await maxmind.open<CityResponse>('./src/GeoLite2-City.mmdb');
+      response.answers.forEach(async (ans, i) => {
+        let answer = ans?.data?.exchange || ans?.data;
+        console.log(JSON.stringify(ans));
+        let ip = '';
+        // IP
+        if (
+          typeof answer === 'string' &&
+          answer?.match(/^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$/)
+        ) {
+          ip = answer;
         }
+        // hostname
+        if (
+          typeof answer === 'string' &&
+          answer?.match(/^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$/)
+        ) {
+          const ipQuery = await resolver.query(answer, 'A');
+          console.log(`ipQuery ${JSON.stringify(ipQuery)}`);
+          ip = ipQuery?.answers?.length ? ipQuery?.answers[0]?.data : ip;
+        }
+        let geolocation: any = {};
+        if (maxmind.validate(ip)) {
+          geolocation = lookup.get(ip);
+        }
+
+        results.push({
+          suggestion: `${`!redirect https://toolbox.googleapps.com/apps/dig/?cache=${i}#${isDig.groups.DNS}/${isDig.groups.domain}`}`,
+          [`${suggestType}`]: 'ENTITY',
+          [`${suggestSubtypes}`]: [512, 433],
+          [`${suggestDetail}`]: {
+            a: `${ans.name} ${ans.ttl} ${ans.class} ${ans.type} ${ans.data?.exchange || ans.data}`,
+            dc: '#DE5833',
+            i: geolocation?.country?.iso_code
+              ? `https://cdn.ip2location.com/assets/img/flags/${geolocation?.country?.iso_code?.toLowerCase()}.png?cache=${i}`
+              : `https://emu.bz/gay`,
+            q: '',
+            t: `${ans.name} ${ans.ttl} ${ans.class} ${ans.type} ${ans.data?.exchange || ans.data}`,
+          },
+          // {
+          //     a: `test ${ans.data}`,
+          //     dc: '#fa03fa',
+          //     i: 'https://cdn.ip2location.com/assets/img/flags/us.png',
+          //     q: '',
+          //     t: `${ans.name} ${ans.ttl} ${ans.class} ${ans.type} ${ans.data?.exchange || ans.data}`,
+          //   },
+          [`${suggestRelevance}`]: 512 * (response.answers.length - i),
+        });
+        console.log(`ans: ${JSON.stringify(ans)}`);
       });
-      let detail = {
-        ansa: {
-          l: [
-            {
-              il: {
-                at: {
-                  t: values.join(', '),
-                  tt: 19,
-                },
-                t: [
-                  {
-                    t: 'spy stock',
-                    tt: 8,
-                  },
-                ],
-              },
-            },
-            {
-              il: {
-                at: {
-                  t: d.header.join(' ').replace(/[^a-zA-Z0-9\.\<\> ]/g, ''),
-                  tt: 6,
-                },
-                t: [
-                  {
-                    t: ' ',
-                    tt: 18,
-                  },
-                ],
-              },
-            },
-          ],
-        },
-        ansb: '10',
-        ansc: '1629540082734',
-      };
-      results.push({
-        suggestion: search,
-        [`${suggestType}`]: 'ENTITY',
-        [`${suggestSubtypes}`]: ['Country'],
-        [`${suggestDetail}`]: detail,
-        [`${suggestRelevance}`]: 99999,
-      });
+      console.log(results);
     }
     if (maxmind.validate(search)) {
       const lookup = await maxmind.open<CityResponse>('./src/GeoLite2-City.mmdb');
@@ -200,41 +207,90 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
       })
     );
     // console.log(JSON.stringify(results, null, 2));
+    const bangRequest: AxiosRequestConfig = {
+      url: `https://api.duckduckgo.com/?q=${encodeURIComponent(request.query.q.trim())}&format=json&pretty=0&no_redirect=1`,
+    };
+    const bangs = (await axios.request(bangRequest)).data;
     if (!searchingBang) {
-      const bangRequest: AxiosRequestConfig = {
-        url: `https://api.duckduckgo.com/?q=${encodeURIComponent(request.query.q)}&format=json&pretty=0&no_redirect=1`,
-      };
-      const bangs = (await axios.request(bangRequest)).data;
+      console.log('!searchingBang');
       if (bangs?.Redirect) {
-        results.push({
-          suggestion: `${bangs?.Redirect}`,
-          [`${suggestType}`]: 'ENTITY',
-          [`${suggestSubtypes}`]: [bangs?.Redirect, 'DuckDuckGo', 'BANG'],
-          [`${suggestDetail}`]: { a: '', dc: '#fa03fa', i: bangs?.Image, q: '', t: bangs?.Redirect },
-          [`${suggestRelevance}`]: 99999,
-        });
+        console.log('bangs');
+        console.log(bangs);
+        console.log('bangs');
+        if (bangs?.Image)
+          results.push({
+            suggestion: `${bangs?.Redirect}`,
+            [`${suggestType}`]: 'ENTITY',
+            [`${suggestSubtypes}`]: ['Custom Bang', 'BANG'],
+            [`${suggestDetail}`]: {
+              a: bangs?.Redirect,
+              dc: '#DE5833',
+              i: `${bangs?.Image.startsWith('http') ? bangs?.Image : `https://duckduckgo.com/${bangs?.Image}`}`,
+              q: '',
+              t: bangs?.Redirect,
+            },
+            [`${suggestRelevance}`]: bangs.Score,
+          });
       }
       // console.log(bangs);
       const bangsRequest: AxiosRequestConfig = {
-        url: `https://duckduckgo.com/ac/?q=${encodeURIComponent(request.query.q)}&format=json&pretty=0&no_redirect=1&kl=wt-wt`,
+        url: `https://duckduckgo.com/ac/?q=${encodeURIComponent(request.query.q.trim())}&format=json&pretty=0&no_redirect=1&kl=wt-wt`,
       };
       const bangss = (await axios.request(bangsRequest)).data;
-      bangss.forEach((b) =>
-        results.push({
-          suggestion: `${b.phrase}`,
-          [`${suggestType}`]: 'ENTITY',
-          [`${suggestSubtypes}`]: ['DuckDuckGo'],
-          [`${suggestDetail}`]: {
-            a: b.snippet,
-            dc: '#DE5833',
-            i: b.image,
-            q: '',
-            t: `${b.phrase}${typeof b.snippet !== 'undefined' ? ` ${b.snippet}` : ''}`,
-          },
-          [`${suggestRelevance}`]: b.score,
-        })
-      );
+      bangss.forEach((b) => {
+        if (b?.image?.length > 0) {
+          // b.image = b.image.substring(0, b.image.indexOf('?'));
+          b.image = b.image += '?cache=' + (Math.random() + 1).toString(36).substring(7);
+          results.push({
+            suggestion: `${b.phrase}`,
+            [`${suggestType}`]: 'ENTITY',
+            [`${suggestSubtypes}`]: ['DuckDuckGo'],
+            [`${suggestDetail}`]: {
+              a: b.snippet,
+              dc: '#DE5833',
+              i: b.image,
+              q: '',
+              t: `${b.phrase} - ${typeof b.snippet !== 'undefined' ? ` ${b.snippet}` : ''}`,
+            },
+            [`${suggestRelevance}`]: b.score,
+          });
+        }
+      });
+    } else {
+      console.log('searchingBang');
+      const bangRequest: AxiosRequestConfig = {
+        url: `https://api.duckduckgo.com/?q=${encodeURIComponent(request.query.q)}&format=json&pretty=0&no_redirect=1`,
+      };
+      const bangsRequest: AxiosRequestConfig = {
+        url: `https://duckduckgo.com/ac/?q=!${encodeURIComponent(bangSlug)}&format=json&pretty=0&no_redirect=1&kl=wt-wt`,
+      };
+      const bangs = (await axios.request(bangRequest)).data;
+      const bangss = (await axios.request(bangsRequest)).data;
+      console.log(`bangs: ${JSON.stringify(bangs)}\n, bangss: ${JSON.stringify(bangss)}`);
+      bangss.forEach((b) => {
+        console.log(`b ${JSON.stringify(b)}`);
+        console.log(`image: ${b.image}`);
+        if (b.phrase === `!${bangSlug}`) {
+          results = results.filter((r) => r.suggestion !== `!${bangSlug}`);
+          b.image = b.image.substring(0, b.image.indexOf('?'));
+
+          results.push({
+            suggestion: `${request.query.q}`,
+            [`${suggestType}`]: 'ENTITY',
+            [`${suggestSubtypes}`]: ['DuckDuckGo'],
+            [`${suggestDetail}`]: {
+              a: `${bangs?.Redirect}`,
+              dc: '#DE5833',
+              i: b.image,
+              q: '',
+              t: `${b.phrase} - ${typeof b.snippet !== 'undefined' ? ` ${b.snippet}` : ''}`,
+            },
+            [`${suggestRelevance}`]: 8888 + b.score,
+          });
+        }
+      });
     }
+
     suggestions.forEach((s) => {
       s.aliases.forEach((a) => {
         if (a.startsWith(bangSlug))
@@ -246,16 +302,20 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
               a: s.url.replace(`~QUERYHERE~`, search),
               dc: '#DE5833',
               i: `https://search.emu.sh/icons/${s.favicon}`,
-              q: '',
+              q: ' ',
               t: `!${s.name} ${s.description}`,
             },
-            [`${suggestRelevance}`]: 999999,
+            [`${suggestRelevance}`]: 99999 + s.score,
           });
       });
     });
+    console.log(results);
+
     results.sort((a, b) => (a[`${suggestRelevance}`] > b[`${suggestRelevance}`] ? -1 : b[`${suggestRelevance}`] > a[`${suggestRelevance}`] ? 1 : 0));
     const googleRes = {
       [`${suggestType}`]: [],
+      [`${headerTexts}`]: [],
+      [`${clientData}`]: [],
       [`${suggestSubtypes}`]: [],
       [`${suggestDetail}`]: [],
       [`${suggestRelevance}`]: [],
@@ -263,9 +323,9 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
     results.sort((a, b) => (a.relevance > b.relevance ? -1 : b.relevance > a.relevance ? 1 : 0));
     // console.log(searchFormat);
-    // console.log(JSON.stringify(results, null, 2));
+    console.log(JSON.stringify(results, null, 2));
     // return results;
-    if (request?.query?.type === 'json') return results;
+    if (request?.query?.type === 'json' || request?.query?.format === 'json') return results;
     const searchFormat: Array<any> = ['', [], [], []];
     searchFormat[0] = request.query.q;
     results.forEach((res) =>
@@ -275,7 +335,7 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
     searchFormat.push(googleRes);
     reply
       .code(200)
-      .header('Content-disposition', 'attachment; filename=f.txt')
+      .header('Content-disposition', 'attachment; filename=xd.txt')
       .type('text/javascript; charset=UTF-8')
       .send(`)]}'\n${JSON.stringify(searchFormat)}`);
   });
