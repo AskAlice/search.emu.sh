@@ -89,7 +89,6 @@ const search: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         newBang([bang, ...s.aliases], s.url.replace(`~QUERYHERE~`, search));
       });
       if (!hasBang)
-        if ((request.query.q = "^/+$")) request.query.q.replace("^/+$", "");
       // Google
       if (!privatelySearch)
         newBang(
