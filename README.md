@@ -12,11 +12,11 @@ I realized as I was doing this that I could easily extend upon google's search s
 ## Suggestion Features
 
 - get IP to location results by typing in an IP address
-  - <img src="https://emu.bz/cCu.png">
+  - <img src="https://emu.bz/cCu.png" >
 - Dig for DNS records by typing the domain then the type of records
-  - <img src="https://emu.bz/OX1.gif">
+  - <img src="https://emu.bz/OX1.gif" >
 - Convert crypto prices to USD easily, and view the data on CoinMarketCap (via CryptoCompare API)
-  - <img src="https://emu.bz/tAm.png">
+  - <img src="https://emu.bz/tAm.png" >
 
 ## search.emu.sh Backend
 
