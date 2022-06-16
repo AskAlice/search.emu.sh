@@ -69,6 +69,7 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
     const suggestSubtypes = request?.query?.type === 'json' ? 'suggestSubtypes' : 'google:suggestsubtypes';
     const suggestDetail = request?.query?.type === 'json' ? 'suggestDetail' : 'google:suggestdetail';
     const suggestRelevance = request?.query?.type === 'json' ? 'suggestRelevance' : 'google:suggestrelevance';
+    const verbatimrelevance = request?.query?.type === 'json' ? 'verbatimrelevance' : 'google:verbatimrelevance';
     const headerTexts = request?.query?.type === 'json' ? 'headerTexts' : 'google:headertexts';
     const clientData = request?.query?.type === 'json' ? 'clientData' : 'google:clientdata';
     let results = [];
@@ -331,6 +332,7 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
     results.forEach((res) =>
       Object.entries(res).forEach(([k, v], i) => (k === 'suggestion' ? searchFormat[1].push(v) && searchFormat[2].push('') : googleRes[k].push(v)))
     );
+    googleRes[verbatimrelevance] = results[0][`${suggestRelevance}`];
     // console.log(googleRes[`${suggestType}`]);
     searchFormat.push(googleRes);
     reply
