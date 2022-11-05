@@ -6,6 +6,7 @@
     "outDir": "dist",
     "target": "es2020",
     "noImplicitAny": false,
+    "noUnusedLocals": false,
     "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,

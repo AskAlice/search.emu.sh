@@ -25,7 +25,8 @@ const search: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
       const bang = searchRegex.groups.bang?.toLowerCase() || '';
       let hasBang = searchRegex.groups.hasBang === '!' ? true : false;
       console.log(`searchRegex groups: ${JSON.stringify(searchRegex.groups)}`);
-      const search = searchRegex.groups.search;
+      let search = searchRegex.groups.search;
+      if (typeof search === 'undefined') search = '';
       if (useApiKeys && typeof process?.env?.OPENAI_API_KEY !== 'undefined' && process?.env?.OPENAI_API_KEY?.length) {
         try {
           let url = 'https://api.openai.com/v1/classifications';

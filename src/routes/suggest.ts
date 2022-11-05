@@ -1,12 +1,12 @@
-import { FastifyPluginAsync } from 'fastify';
 import axios, { AxiosRequestConfig } from 'axios';
+import { FastifyPluginAsync } from 'fastify';
 // import zlib from "zlib";
+import doh from 'dohjs';
+import maxmind, { CityResponse } from 'maxmind';
+import NodeCache from 'node-cache';
 import suggestions from '../suggestions';
 import cryptoAssets from '../suggestions/cryptoAssets.json';
-import maxmind, { CityResponse } from 'maxmind';
-import doh from 'dohjs';
 const resolver = new doh.DohResolver('https://1.1.1.1/dns-query');
-import NodeCache from 'node-cache';
 const cache = new NodeCache();
 
 /* Notes 
@@ -14,8 +14,133 @@ const cache = new NodeCache();
 Possible to send header data with suggestions? https://github.dev/chromium/chromium/blob/e590866de188fbe1efe182b3be1db42155f55667/components/omnibox/browser/search_suggestion_parser.cc#L518-L529
 
 */
+
+// interface SuggestDetail {
+//   a?: string;
+//   dc?: string; // hex color
+//   i?: string; // thumbnail url
+//   q?: string;
+//   t?: string;
+// }
+// interface Suggestion {
+//   type: string;
+//   suggestion: string;
+//   subtypes: string[] | number[];
+//   detail: SuggestDetail | null;
+//   relevance: number;
+//   headerTexts?: string;
+//   verbatimRelevence?: number;
+//   clientData?: string;
+// }
+// type LongPart = {
+//   [Property in keyof Omit<Suggestion, 'verbatimRelevence' | 'headerTexts' | 'clientData' | 'suggestion'> as `google:suggest${Lowercase<
+//     string & Property
+//   >}`]: Suggestion[Property];
+// };
+// type ShortPart = {
+//   [Property in keyof Omit<Suggestion, 'type' | 'subtypes' | 'detail' | 'relevance' | 'suggestion'> as `google:${Lowercase<
+//     string & Property
+//   >}`]: Suggestion[Property];
+// };
+// type GoogleSuggestion = { suggestion: string } & ShortPart & LongPart;
+
+// type googleData = {
+//   'google:clientdata': { bpc: boolean; tlw: boolean };
+//   'google:suggestdetail': SuggestDetail[];
+//   'google:suggestrelevance': number[];
+//   'google:suggestsubtypes': number[][];
+//   'google:suggesttype': string[];
+//   'google:verbatimrelevance': number;
+// };
+// type GoogleRes = Array<[string, string[], Array<string>, Array<string>, googleData]>;
+// interface GoogleResult {
+//   suggestions: string[];
+//   Type: string[];
+//   headerTexts: string[];
+//   clientData: string[];
+//   subtypes: Array<string|number>;
+//   detail: Array<SuggestDetail[]>;
+//   relevance: Array<number>;
+//   }
+// const S: GoogleSuggestion = {
+//   suggestion: 'test',
+//   'google:suggesttype': 'NAVIGATION',
+//   'google:suggestsubtypes': [0],
+//   'google:suggestrelevance': 0,
+//   'google:suggestdetail': null,
+//   'google:clientdata': 'test',
+//   'google:headertexts': 'test',
+//   'google:verbatimrelevence': 0,
+// };
+
+// const convert = (suggestion: Suggestion): GoogleSuggestion => {
+//   return {
+//     suggestion: suggestion.suggestion,
+//     'google:suggesttype': suggestion.type,
+//     'google:suggestsubtypes': suggestion?.subtypes,
+//     'google:suggestrelevance': suggestion.relevance,
+//     'google:suggestdetail': suggestion?.detail,
+//     'google:clientdata': suggestion?.clientData,
+//     'google:headertexts': suggestion?.headerTexts,
+//     'google:verbatimrelevence': suggestion?.verbatimRelevence,
+//   } as GoogleSuggestion;
+// };
+
+const apiFetch = (options: AxiosRequestConfig, callback: (response) => Array<any>) => {
+  return new Promise<Array<any>>((resolve, reject) => {
+    axios
+      .request(options)
+      .then((response) => {
+        resolve(callback(response));
+      })
+      .catch((error) => {
+        console.error(error);
+        reject(error);
+        return;
+      });
+  });
+};
+
+const getResponse = (request, results, googleRes) => {
+  const searchFormat: Array<any> = ['', [], [], []];
+  const suggestRelevance = request?.query?.type === 'json' ? 'suggestRelevance' : 'google:suggestrelevance';
+
+  searchFormat[0] = request.query.q;
+  results.forEach((res) => {
+    // const converted = request?.query?.format === 'json' ? res : convert(res);
+    Object.entries(res).forEach(([k, v], i) => {
+      try {
+        console.log(k, v);
+        k === 'suggestion' ? searchFormat[1].push(v) && searchFormat[2].push('') : googleRes[k].push(v);
+      } catch (e) {
+        console.log('ERROR AT', k);
+      }
+    });
+  });
+
+  googleRes[`google:verbatimrelevance`] = results[0][`${suggestRelevance}`];
+  return request?.query?.format === 'json' ? searchFormat : googleRes;
+};
 const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   fastify.get('/suggest', async function (request: any, reply) {
+    const {
+      activeSpan,
+      tracer,
+      // context,
+      // extract,
+      // inject,
+    } = request.openTelemetry();
+
+    // Pipe the buffer to the response stream.
+    // Spans started in a wrapped route will automatically be children of the activeSpan.
+    const childSpan = tracer.startSpan(`${activeSpan.name} - child process`);
+    const suggestType = request?.query?.type === 'json' ? 'suggestType' : 'google:suggesttype';
+    const suggestSubtypes = request?.query?.type === 'json' ? 'suggestSubtypes' : 'google:suggestsubtypes';
+    const suggestDetail = request?.query?.type === 'json' ? 'suggestDetail' : 'google:suggestdetail';
+    const suggestRelevance = request?.query?.type === 'json' ? 'suggestRelevance' : 'google:suggestrelevance';
+    const verbatimrelevance = request?.query?.type === 'json' ? 'verbatimrelevance' : 'google:verbatimrelevance';
+    const headerTexts = request?.query?.type === 'json' ? 'headerTexts' : 'google:headertexts';
+    const clientData = request?.query?.type === 'json' ? 'clientData' : 'google:clientdata';
     let useApiKeys: boolean = false; // query param to actually utilize the API keys specified in .env
     if (request.query?.useApiKeys === 'true') {
       useApiKeys = true;
@@ -45,34 +170,129 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         : [];
     console.log(`assets: ${JSON.stringify(assets)}`);
     console.log(JSON.stringify(cryptoSearch));
-    var options: AxiosRequestConfig = {
-      method: 'GET',
-      url: 'https://www.google.com/complete/search',
-      params: googleQuery,
-      headers: {
-        'x-client-data': 'CJS2yQEIpbbJAQjEtskBCKmdygEIvY7LAQjQmssBCKCgywEI5/HLAQis8ssBCN3yywEI6fLLAQjv98sBCJn4ywEItPjLAQie+csBGI6eywEYuvLLARjf+csB',
-        'sec-fetch-site': 'none',
-        'sec-fetch-mode': 'no-cors',
-        'sec-fetch-dest': 'empty',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'accept-language': 'en-US,en;q=0.9',
-        cookie: 'cgic=IgMqLyo',
-      },
+    let results = (
+      await Promise.all([
+        new Promise<Array<any>>((resolve, reject) => {
+          if (typeof bangSlug !== 'string') resolve([]);
+          let results = [];
+          const bangRequest: AxiosRequestConfig = {
+            url: `https://api.duckduckgo.com/?q=${request.query.q.trim()}&format=json&pretty=0&no_redirect=1`,
+          };
+          const bangsRequest: AxiosRequestConfig = {
+            url: `https://duckduckgo.com/ac/?q=${encodeURIComponent(
+              !searchingBang ? request.query.q.trim() : `!${bangSlug}`
+            )}&format=json&pretty=0&no_redirect=1&kl=wt-wt`,
+          };
+          Promise.all([axios.request(bangRequest), axios.request(bangsRequest)]).then(([{ data: bangs }, { data: bangss }]) => {
+            if (bangs?.Redirect) {
+              console.log('redirect');
+              if (bangs?.Image)
+                results.push({
+                  suggestion: `${request.query.q}`,
+                  [`${suggestType}`]: 'ENTITY',
+                  [`${suggestSubtypes}`]: [512, 199, 175],
+                  [`${suggestDetail}`]: {
+                    a: `${bangs?.Redirect}`,
+                    dc: '#DE5833',
+                    i: `${bangs?.Image.startsWith('http') ? bangs?.Image : `https://duckduckgo.com/${bangs?.Image}`}`,
+                    q: 'alice=true',
+                    zae: '/g/test',
+                    t: `${request.query.q.trim()}`,
+                  },
+                  [`${suggestRelevance}`]: 900 - results.length,
+                });
+            }
+            // console.log(bangs);
+
+            bangss.forEach((b) => {
+              if (!searchingBang) {
+                if (b?.image?.length > 0) {
+                  // b.image = b.image.substring(0, b.image.indexOf('?'));
+                  b.image = b.image += '?cache=' + (Math.random() + 1).toString(36).substring(7);
+                  results.push({
+                    suggestion: `${b.phrase}`,
+                    [`${suggestType}`]: 'ENTITY',
+                    [`${suggestSubtypes}`]: ['DuckDuckGo'],
+                    [`${suggestDetail}`]: {
+                      a: b.snippet,
+                      dc: '#DE5833',
+                      i: b.image,
+                      q: 'alice=true',
+                      zae: '/g/test',
+                      t: `${b.phrase} - ${typeof b.snippet !== 'undefined' ? ` ${b.snippet}` : ''}`,
+                    },
+                    [`${suggestRelevance}`]: 6000 - results.length,
+                  });
+                }
+              } else {
+                if (b?.phrase === `!${bangSlug}`) {
+                  results.push({
+                    suggestion: `${request.query.q} `,
+                    [`${suggestType}`]: 'ENTITY',
+                    [`${suggestSubtypes}`]: ['DuckDuckGo'],
+                    [`${suggestDetail}`]: {
+                      a: `${bangs?.Redirect}`,
+                      dc: '#DE5833',
+                      i: b.image,
+                      q: 'alice=true',
+                      zae: '/g/test',
+                      t: `${b.phrase} - ${typeof b.snippet !== 'undefined' ? ` ${b.snippet}` : ''}`,
+                    },
+                    [`${suggestRelevance}`]: 800 - results.length,
+                  });
+                }
+              }
+              resolve(results);
+            });
+          });
+        }),
+        apiFetch(
+          {
+            method: 'GET',
+            url: 'https://www.google.com/complete/search',
+            params: googleQuery,
+            headers: {
+              'x-client-data':
+                'CJS2yQEIpbbJAQjEtskBCKmdygEIvY7LAQjQmssBCKCgywEI5/HLAQis8ssBCN3yywEI6fLLAQjv98sBCJn4ywEItPjLAQie+csBGI6eywEYuvLLARjf+csB',
+              'sec-fetch-site': 'none',
+              'sec-fetch-mode': 'no-cors',
+              'sec-fetch-dest': 'empty',
+              'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+              'accept-language': 'en-US,en;q=0.9',
+              cookie: 'cgic=IgMqLyo',
+            },
+          },
+          (res) => {
+            let results = [];
+            const data = res.data.replace(/.*/, '').substr(1);
+            const response = JSON.parse(data);
+            response[1].forEach((key, i) => {
+              console.log(response[4]?.[`google:suggestdetail`]?.[i]);
+              results.push({
+                suggestion: searchingBang ? key.replace(new RegExp(`(^)(${bangSlug}\\s)?`, 'g'), `!${bangSlug} ${'$1'}`) : key,
+                [`${suggestType}`]: response[4][`google:suggesttype`]?.[i],
+                [`${suggestSubtypes}`]: response[4]?.[`google:suggestsubtypes`]?.[i],
+                [`${suggestDetail}`]:
+                  typeof response[4]?.[`google:suggestdetail`]?.[i] !== 'undefined' && searchingBang
+                    ? { ...response[4]?.[`google:suggestdetail`]?.[i], a: `${response[4]?.[`google:suggestdetail`]?.[i]['a']} via !${bangSlug}` }
+                    : response[4]?.[`google:suggestdetail`]?.[i] || {},
+                [`${suggestRelevance}`]: response[4][`google:suggestrelevance`]?.[i],
+              });
+            });
+            return results;
+          }
+        ),
+      ])
+    ).reduce((acc, val) => [...acc, ...val], []);
+    const googleRes = {
+      [`${suggestType}`]: [],
+      [`${headerTexts}`]: [],
+      [`${clientData}`]: [],
+      [`${suggestSubtypes}`]: [],
+      [`${suggestDetail}`]: [],
+      [`${suggestRelevance}`]: [],
     };
-    const data = googleQuery?.client ? (await axios.request(options)).data.replace(/.*/, '').substr(1) : '[[],[],[]]';
-    // const data = `[1,[]]`;
-    // console.log(data);
-    const response = JSON.parse(data);
-    // console.log(`data: ${JSON.stringify(data, null, 2)}`);
-    // console.log(`response: ${JSON.stringify(response, null, 2)}`);
-    const suggestType = request?.query?.type === 'json' ? 'suggestType' : 'google:suggesttype';
-    const suggestSubtypes = request?.query?.type === 'json' ? 'suggestSubtypes' : 'google:suggestsubtypes';
-    const suggestDetail = request?.query?.type === 'json' ? 'suggestDetail' : 'google:suggestdetail';
-    const suggestRelevance = request?.query?.type === 'json' ? 'suggestRelevance' : 'google:suggestrelevance';
-    const verbatimrelevance = request?.query?.type === 'json' ? 'verbatimrelevance' : 'google:verbatimrelevance';
-    const headerTexts = request?.query?.type === 'json' ? 'headerTexts' : 'google:headertexts';
-    const clientData = request?.query?.type === 'json' ? 'clientData' : 'google:clientdata';
-    let results = [];
+    // buffer.push(getResponse(request, results, googleRes));
     const cryptocompareKey = process?.env?.CRYPTOCOMPARE_KEY || false;
     if (assets.length > 0 && useApiKeys && cryptocompareKey) {
       let opt: AxiosRequestConfig = {
@@ -113,7 +333,7 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
                   .replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${(coef * cryptoData.data.USD).toString().split('.')[1]}`
           } USD`,
         },
-        [`${suggestRelevance}`]: 99999,
+        [`${suggestRelevance}`]: 1999,
       });
     }
 
@@ -192,135 +412,69 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
           q: 'test',
           t: `${search}`,
         },
-        [`${suggestRelevance}`]: 99999,
+        [`${suggestRelevance}`]: 9999,
       });
     }
-    response[1].forEach((key, i) =>
-      results.push({
-        suggestion: searchingBang ? key.replace(new RegExp(`(^)(${bangSlug}\\s)?`, 'g'), `!${bangSlug} ${'$1'}`) : key,
-        [`${suggestType}`]: response[4][`google:suggesttype`]?.[i],
-        [`${suggestSubtypes}`]: response[4]?.[`google:suggestsubtypes`]?.[i],
-        [`${suggestDetail}`]:
-          typeof response[4]?.[`google:suggestdetail`]?.[i] !== 'undefined' && searchingBang
-            ? { ...response[4]?.[`google:suggestdetail`]?.[i], a: `${response[4]?.[`google:suggestdetail`]?.[i]?.a} via ${bangSlug}` }
-            : response[4]?.[`google:suggestdetail`]?.[i] || {},
-        [`${suggestRelevance}`]: response[4][`google:suggestrelevance`]?.[i],
-      })
-    );
-    // console.log(JSON.stringify(results, null, 2));
-    const bangRequest: AxiosRequestConfig = {
-      url: `https://api.duckduckgo.com/?q=${encodeURIComponent(request.query.q.trim())}&format=json&pretty=0&no_redirect=1`,
-    };
-    const bangs = (await axios.request(bangRequest)).data;
-    if (!searchingBang) {
-      console.log('!searchingBang');
-      if (bangs?.Redirect) {
-        console.log('bangs');
-        console.log(bangs);
-        console.log('bangs');
-        if (bangs?.Image)
-          results.push({
-            suggestion: `${bangs?.Redirect}`,
-            [`${suggestType}`]: 'ENTITY',
-            [`${suggestSubtypes}`]: ['Custom Bang', 'BANG'],
-            [`${suggestDetail}`]: {
-              a: bangs?.Redirect,
-              dc: '#DE5833',
-              i: `${bangs?.Image.startsWith('http') ? bangs?.Image : `https://duckduckgo.com/${bangs?.Image}`}`,
-              q: '',
-              t: bangs?.Redirect,
-            },
-            [`${suggestRelevance}`]: bangs.Score,
-          });
-      }
-      // console.log(bangs);
-      const bangsRequest: AxiosRequestConfig = {
-        url: `https://duckduckgo.com/ac/?q=${encodeURIComponent(request.query.q.trim())}&format=json&pretty=0&no_redirect=1&kl=wt-wt`,
-      };
-      const bangss = (await axios.request(bangsRequest)).data;
-      bangss.forEach((b) => {
-        if (b?.image?.length > 0) {
-          // b.image = b.image.substring(0, b.image.indexOf('?'));
-          b.image = b.image += '?cache=' + (Math.random() + 1).toString(36).substring(7);
-          results.push({
-            suggestion: `${b.phrase}`,
-            [`${suggestType}`]: 'ENTITY',
-            [`${suggestSubtypes}`]: ['DuckDuckGo'],
-            [`${suggestDetail}`]: {
-              a: b.snippet,
-              dc: '#DE5833',
-              i: b.image,
-              q: '',
-              t: `${b.phrase} - ${typeof b.snippet !== 'undefined' ? ` ${b.snippet}` : ''}`,
-            },
-            [`${suggestRelevance}`]: b.score,
-          });
-        }
-      });
-    } else {
-      console.log('searchingBang');
-      const bangRequest: AxiosRequestConfig = {
-        url: `https://api.duckduckgo.com/?q=${encodeURIComponent(request.query.q)}&format=json&pretty=0&no_redirect=1`,
-      };
-      const bangsRequest: AxiosRequestConfig = {
-        url: `https://duckduckgo.com/ac/?q=!${encodeURIComponent(bangSlug)}&format=json&pretty=0&no_redirect=1&kl=wt-wt`,
-      };
-      const bangs = (await axios.request(bangRequest)).data;
-      const bangss = (await axios.request(bangsRequest)).data;
-      console.log(`bangs: ${JSON.stringify(bangs)}\n, bangss: ${JSON.stringify(bangss)}`);
-      bangss.forEach((b) => {
-        console.log(`b ${JSON.stringify(b)}`);
-        console.log(`image: ${b.image}`);
-        if (b.phrase === `!${bangSlug}`) {
-          results = results.filter((r) => r.suggestion !== `!${bangSlug}`);
-          b.image = b.image.substring(0, b.image.indexOf('?'));
 
-          results.push({
-            suggestion: `${request.query.q}`,
-            [`${suggestType}`]: 'ENTITY',
-            [`${suggestSubtypes}`]: ['DuckDuckGo'],
-            [`${suggestDetail}`]: {
-              a: `${bangs?.Redirect}`,
-              dc: '#DE5833',
-              i: b.image,
-              q: '',
-              t: `${b.phrase} - ${typeof b.snippet !== 'undefined' ? ` ${b.snippet}` : ''}`,
-            },
-            [`${suggestRelevance}`]: 8888 + b.score,
-          });
-        }
-      });
-    }
+    // console.log(JSON.stringify(results, null, 2));
+
+    // const bangs = (await axios.request(bangRequest)).data;
+
+    //   // console.log(bangs);
+    //   const bangsRequest: AxiosRequestConfig = {
+    //     url: `https://duckduckgo.com/ac/?q=${encodeURIComponent(request.query.q.trim())}&format=json&pretty=0&no_redirect=1&kl=wt-wt`,
+    //   };
+    //   const bangss = (await axios.request(bangsRequest)).data;
+    //   bangss.forEach((b) => {
+    //     if (b?.image?.length > 0) {
+    //       // b.image = b.image.substring(0, b.image.indexOf('?'));
+    //       b.image = b.image += '?cache=' + (Math.random() + 1).toString(36).substring(7);
+    //       results.push({
+    //         suggestion: `${b.phrase}`,
+    //         Type: 'ENTITY',
+    //         Subtypes: ['DuckDuckGo'],
+    //         Detail: {
+    //           a: b.snippet,
+    //           dc: '#DE5833',
+    //           i: b.image,
+    //           q: '',
+    //           t: `${b.phrase} - ${typeof b.snippet !== 'undefined' ? ` ${b.snippet}` : ''}`,
+    //         },
+    //         Relevance: b.score,
+    //       });
+    //     }
+    //   });
+    // } else {
+    //   console.log('searchingBang');
+    //   const bangRequest: AxiosRequestConfig = {
+    //     url: `https://api.duckduckgo.com/?q=${encodeURIComponent(request.query.q)}&format=json&pretty=0&no_redirect=1`,
+    //   };
 
     suggestions.forEach((s) => {
+      let shouldPush = false;
       s.aliases.forEach((a) => {
-        if (a.startsWith(bangSlug))
-          results.push({
-            suggestion: `!${s.name}${typeof search !== 'undefined' ? ` ${search}` : ''}`,
-            [`${suggestType}`]: 'ENTITY',
-            [`${suggestSubtypes}`]: ['Custom Bang', 'BANG', s.url.replace(`~QUERYHERE~`, search)],
-            [`${suggestDetail}`]: {
-              a: s.url.replace(`~QUERYHERE~`, search),
-              dc: '#DE5833',
-              i: `https://search.emu.sh/icons/${s.favicon}`,
-              q: ' ',
-              t: `!${s.name} ${s.description}`,
-            },
-            [`${suggestRelevance}`]: 99999 + s.score,
-          });
+        if (a.startsWith(bangSlug)) shouldPush = true;
       });
+      if (shouldPush) {
+        results.push({
+          suggestion: `!${s.name}${typeof search !== 'undefined' ? ` ${search}` : ''}`,
+          [`${suggestType}`]: 'ENTITY',
+          [`${suggestSubtypes}`]: ['Custom Bang', 'BANG', s.url.replace(`~QUERYHERE~`, search)],
+          [`${suggestDetail}`]: {
+            a: s.url.replace(`~QUERYHERE~`, search),
+            dc: '#DE5833',
+            i: `https://search.emu.sh/icons/${s.favicon}`,
+            q: ' ',
+            t: `!${s?.name} - ${s?.description}: ${search}`,
+          },
+          [`${suggestRelevance}`]: 444,
+        });
+      }
     });
-    console.log(results);
+    // console.log(results);
 
-    results.sort((a, b) => (a[`${suggestRelevance}`] > b[`${suggestRelevance}`] ? -1 : b[`${suggestRelevance}`] > a[`${suggestRelevance}`] ? 1 : 0));
-    const googleRes = {
-      [`${suggestType}`]: [],
-      [`${headerTexts}`]: [],
-      [`${clientData}`]: [],
-      [`${suggestSubtypes}`]: [],
-      [`${suggestDetail}`]: [],
-      [`${suggestRelevance}`]: [],
-    };
+    results = results.filter((e) => e);
+    results.sort((a, b) => (a.relevance > b.relevance ? -1 : b.relevance > a.relevance ? 1 : 0));
 
     results.sort((a, b) => (a.relevance > b.relevance ? -1 : b.relevance > a.relevance ? 1 : 0));
     // console.log(searchFormat);
@@ -329,12 +483,21 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
     if (request?.query?.type === 'json' || request?.query?.format === 'json') return results;
     const searchFormat: Array<any> = ['', [], [], []];
     searchFormat[0] = request.query.q;
-    results.forEach((res) =>
-      Object.entries(res).forEach(([k, v], i) => (k === 'suggestion' ? searchFormat[1].push(v) && searchFormat[2].push('') : googleRes[k].push(v)))
-    );
-    googleRes[verbatimrelevance] = results[0][`${suggestRelevance}`];
-    // console.log(googleRes[`${suggestType}`]);
+    results.forEach((res) => {
+      // const converted = request?.query?.format === 'json' ? res : convert(res);
+      Object.entries(res).forEach(([k, v], i) => {
+        try {
+          k === 'suggestion' ? searchFormat[1].push(v) && searchFormat[2].push('') : googleRes[k].push(v);
+        } catch (e) {
+          console.log('ERROR AT', k);
+        }
+      });
+    });
+
+    googleRes[verbatimrelevance] = typeof results[0] !== 'undefined' ? results[0][`${suggestRelevance}`] : 555;
+    // console.log(googleResType);
     searchFormat.push(googleRes);
+    childSpan.end();
     reply
       .code(200)
       .header('Content-disposition', 'attachment; filename=xd.txt')
