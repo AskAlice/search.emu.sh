@@ -398,22 +398,24 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
     if (maxmind.validate(search)) {
       const lookup = await maxmind.open<CityResponse>('./src/GeoLite2-City.mmdb');
       const geolocation = lookup.get(search);
-      console.log(geolocation); // inferred type maxmind.CityResponse
-      results.push({
-        suggestion: search,
-        [`${suggestType}`]: 'ENTITY',
-        [`${suggestSubtypes}`]: ['Country'],
-        [`${suggestDetail}`]: {
-          a: `${geolocation?.city?.names?.en ? `${geolocation?.city?.names?.en}, ` : ''}${
-            geolocation?.subdivisions?.length ? `${geolocation?.subdivisions[0]?.iso_code}, ` : ''
-          } ${geolocation?.country?.names?.en} ${geolocation.location.latitude} ${geolocation.location.longitude}`,
-          dc: '#DE5833',
-          i: `https://cdn.ip2location.com/assets/img/flags/${geolocation.country.iso_code?.toLowerCase()}.png`,
-          q: 'test',
-          t: `${search}`,
-        },
-        [`${suggestRelevance}`]: 9999,
-      });
+      console.log(`geolocation: ${JSON.stringify(geolocation)}`); // inferred type maxmind.CityResponse
+      if(typeof geolocation?.location === 'string'){
+        results.push({
+          suggestion: search,
+          [`${suggestType}`]: 'ENTITY',
+          [`${suggestSubtypes}`]: ['Country'],
+          [`${suggestDetail}`]: {
+            a: `${geolocation?.city?.names?.en ? `${geolocation?.city?.names?.en}, ` : ''}${
+              geolocation?.subdivisions?.length ? `${geolocation?.subdivisions[0]?.iso_code}, ` : ''
+            } ${geolocation?.country?.names?.en} ${geolocation.location.latitude} ${geolocation.location.longitude}`,
+            dc: '#DE5833',
+            i: `https://cdn.ip2location.com/assets/img/flags/${geolocation.country.iso_code?.toLowerCase()}.png`,
+            q: 'test',
+            t: `${search}`,
+          },
+          [`${suggestRelevance}`]: 9999,
+        });
+      }
     }
 
     // console.log(JSON.stringify(results, null, 2));
