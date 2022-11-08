@@ -22,6 +22,9 @@ const search: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
       if(hasbang){
         newBang([true, hasBang], `https://duckduckgo.com/?q=${encodeURIComponent(request.query.q)}`);
       }
+      suggestions.forEach((s) => {
+        newBang([bang, ...s.aliases], s.url.replace(`~QUERYHERE~`, search));
+      });
       console.log(`searchRegex groups: ${JSON.stringify(searchRegex.groups)}`);
       let search = searchRegex.groups.search;
       if (typeof search === 'undefined') search = '';
@@ -66,12 +69,9 @@ const search: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
       }
       // console.log(`Categories: ${JSON.stringify(categories)}`);
 
-      suggestions.forEach((s) => {
-        newBang([bang, ...s.aliases], s.url.replace(`~QUERYHERE~`, search));
-      });
+
       if (!hasBang)
         if (!privatelySearch)
-          // Google
           newBang([false, hasBang], `https://google.com/search?q=${encodeURIComponent(request.query.q)}`);
       // DuckDuckGo
       newBang([true, hasBang || privatelySearch], `https://duckduckgo.com/?q=${encodeURIComponent(request.query.q)}`);
