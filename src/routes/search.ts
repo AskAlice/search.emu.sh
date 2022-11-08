@@ -8,15 +8,10 @@ const search: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
     if (request.query?.useApiKeys === 'true') {
       useApiKeys = true;
     }
-    const redirect = (url) => {
-      console.log(url);
-      return reply.type('text/html; charset=UTF-8').header('Referrer-Policy', 'origin').send(redirectBody(url));
-    };
     let privatelySearch = false;
     const newBang = (comparisons, url) => {
       const comp = Array.from(new Set(comparisons));
-      // console.log(`hostname: ${new URL(url).hostname}, comp.length: ${comp.length}, comparisons.length: ${comparisons.length}, comp.length !== comparisons.length: ${comp.length !== comparisons.length}`);
-      if (comp.length !== comparisons.length) redirect(url);
+      if (comp.length !== comparisons.length) return reply.type('text/html; charset=UTF-8').header('Referrer-Policy', 'origin').send(redirectBody(url));
     };
     if (!request.query?.q) {
       return reply.code(302).header('Location', '/');
@@ -24,6 +19,9 @@ const search: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
       const searchRegex = request.query?.q?.match(/(?<hasBang>\!?)(?<bang>(?<=\!)[\w\d-_]+)?([\s\+]+)?(?<search>.*)?/);
       const bang = searchRegex.groups.bang?.toLowerCase() || '';
       let hasBang = searchRegex.groups.hasBang === '!' ? true : false;
+      if(hasbang){
+        newBang([true, hasBang], `https://duckduckgo.com/?q=${encodeURIComponent(request.query.q)}`);
+      }
       console.log(`searchRegex groups: ${JSON.stringify(searchRegex.groups)}`);
       let search = searchRegex.groups.search;
       if (typeof search === 'undefined') search = '';
