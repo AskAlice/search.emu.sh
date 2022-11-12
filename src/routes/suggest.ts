@@ -1,6 +1,7 @@
 import axios, { AxiosRequestConfig } from 'axios';
 import { FastifyPluginAsync } from 'fastify';
 // import zlib from "zlib";
+import { Span, Tracer } from '@opentelemetry/api';
 import doh from 'dohjs';
 import http from 'http';
 import https from 'https';
@@ -90,10 +91,15 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
       // extract,
       // inject,
     } = request.openTelemetry();
+    const t: Tracer = tracer;
+    const s: Span = activeSpan;
+    s.updateName(`[${request.method}]: /suggest`);
+    s.setAttribute('query', request.query.q);
+    const childSpan = tracer.startSpan(`${activeSpan.name} - child process`);
+    // doSomeWork()
 
     // Pipe the buffer to the response stream.
     // Spans started in a wrapped route will automatically be children of the activeSpan.
-    const childSpan = tracer.startSpan(`${activeSpan.name} - child process`);
     const lookup = await maxmind.open<CityResponse>('./src/GeoLite2-City.mmdb');
 
     let useApiKeys: boolean = false; // query param to actually utilize the API keys specified in .env
@@ -195,6 +201,7 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
     console.log(`PRE-async tasks \n\n ${JSON.stringify(results)}`);
     if (results.length > 0) {
+      childSpan.end();
       return sendReply(request, results, reply);
     }
     try {
@@ -209,41 +216,43 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
             console.log('MATCHED');
             const response = await resolver.query(isDig.groups.domain, isDig.groups.DNS);
 
-            response.answers.forEach(async (ans, i) => {
-              let answer = ans?.data?.exchange || ans?.data;
-              console.log(`answer: ${JSON.stringify(ans)}`);
-              let ip = '';
-              // IP
-              if (
-                typeof answer === 'string' &&
-                answer?.match(/^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$/)
-              ) {
-                ip = answer;
-              }
-              let geolocation: any = {};
-              if (await maxmind.validate(ip)) {
-                geolocation = await lookup.get(ip);
-              }
-              console.log('hmm');
-              results.push({
-                suggestion: `${`!redirect https://toolbox.googleapps.com/apps/dig/?cache=${i}#${isDig.groups.DNS}/${isDig.groups.domain}`}`,
-                [`${suggestType}`]: 'ENTITY',
-                [`${suggestSubtypes}`]: [512, 433],
-                [`${suggestDetail}`]: {
-                  a: `${ans.name} ${ans.ttl} ${ans.class} ${ans.type} ${ans.data?.exchange || ans.data}`,
-                  dc: '#DE5833',
-                  i:
-                    typeof geolocation?.country?.iso_code !== 'undefined'
-                      ? `https://cdn.ip2location.com/assets/img/flags/${geolocation?.country?.iso_code?.toLowerCase()}.png?cache=${i}`
-                      : `https://emu.bz/gay.png`,
-                  q: '',
-                  t: `${ans.name} ${ans.ttl} ${ans.class} ${ans.type} ${ans.data?.exchange || ans.data}`,
-                },
-                [`${suggestRelevance}`]: 512 * (response.answers.length - i),
-              });
-              console.log(`${results.length} ans: ${JSON.stringify(ans)}\n\nresults:\n${JSON.stringify(results)}`);
-              if (results.length) return resolve(results);
-            });
+            await Promise.all(
+              response.answers.map(async (ans, i) => {
+                let answer = ans?.data?.exchange || ans?.data;
+                console.log(`answer: ${JSON.stringify(ans)}`);
+                let ip = '';
+                // IP
+                if (
+                  typeof answer === 'string' &&
+                  answer?.match(/^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$/)
+                ) {
+                  ip = answer;
+                }
+                let geolocation: any = {};
+                if (await maxmind.validate(ip)) {
+                  geolocation = await lookup.get(ip);
+                }
+                console.log('hmm');
+                results.push({
+                  suggestion: `${`!redirect https://toolbox.googleapps.com/apps/dig/?cache=${i}#${isDig.groups.DNS}/${isDig.groups.domain}`}`,
+                  [`${suggestType}`]: 'ENTITY',
+                  [`${suggestSubtypes}`]: [512, 433],
+                  [`${suggestDetail}`]: {
+                    a: `${ans.name} ${ans.ttl} ${ans.class} ${ans.type} ${ans.data?.exchange || ans.data}`,
+                    dc: '#DE5833',
+                    i:
+                      typeof geolocation?.country?.iso_code !== 'undefined'
+                        ? `https://cdn.ip2location.com/assets/img/flags/${geolocation?.country?.iso_code?.toLowerCase()}.png?cache=${i}`
+                        : `https://emu.bz/gay.png`,
+                    q: '',
+                    t: `${ans.name} ${ans.ttl} ${ans.class} ${ans.type} ${ans.data?.exchange || ans.data}`,
+                  },
+                  [`${suggestRelevance}`]: 512 * (response.answers.length - i),
+                });
+                console.log(`${results.length} ans: ${JSON.stringify(ans)}\n\nresults:\n${JSON.stringify(results)}`);
+                if (results.length) resolve(results);
+              })
+            );
             console.log(`results: ${JSON.stringify(results)}`);
             console.log(`results.length: ${results.length}`);
           } else {
@@ -298,7 +307,7 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
                     a: `${bangs?.Redirect}`,
                     dc: '#DE5833',
                     i: `${bangs?.Image.startsWith('http') ? bangs?.Image : `https://duckduckgo.com/${bangs?.Image}`}`,
-                    q: 'alice=true',
+                    q: 'redirect',
                     zae: '/g/test',
                     t: `${request.query.q.trim()}`,
                   },
@@ -313,14 +322,14 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
                   // b.image = b.image.substring(0, b.image.indexOf('?'));
                   b.image = b.image += '?cache=' + (Math.random() + 1).toString(36).substring(7);
                   results.push({
-                    suggestion: `${b.phrase}`,
+                    suggestion: `${b.phrase} ${search ? `${search}` : ''}`,
                     [`${suggestType}`]: 'ENTITY',
                     [`${suggestSubtypes}`]: ['DuckDuckGo'],
                     [`${suggestDetail}`]: {
                       a: b.snippet,
                       dc: '#DE5833',
                       i: b.image,
-                      q: 'alice=true',
+                      q: 'bang',
                       zae: '/g/test',
                       t: `${b.phrase} - ${typeof b.snippet !== 'undefined' ? ` ${b.snippet}` : ''}`,
                     },
@@ -330,7 +339,7 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
               } else {
                 if (b?.phrase === `!${bangSlug}`) {
                   results.push({
-                    suggestion: `${request.query.q} `,
+                    suggestion: `${request.query.q}`,
                     [`${suggestType}`]: 'ENTITY',
                     [`${suggestSubtypes}`]: ['DuckDuckGo'],
                     [`${suggestDetail}`]: {
@@ -405,6 +414,7 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
           });
       });
     }
+    childSpan.end();
     console.log('sending reply');
     reply.code(200);
     return sendReply(request, results, reply);
