@@ -3,12 +3,10 @@ import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentation
 import { JaegerExporter } from '@opentelemetry/exporter-jaeger';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { FastifyInstrumentation } from '@opentelemetry/instrumentation-fastify';
-import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
 import { Resource } from '@opentelemetry/resources';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
-
 const create = () => {
   const options = {
     tags: [], // optional
@@ -32,15 +30,9 @@ const create = () => {
       // Fastify instrumentation expects HTTP layer to be instrumented
       getNodeAutoInstrumentations({
         // load custom configuration for http instrumentation
-        '@opentelemetry/instrumentation-http': {
-          applyCustomAttributesOnSpan: (span) => {
-            span.setAttribute('foo2', 'bar2');
-          },
-        },
+        '@opentelemetry/instrumentation-http': {},
         '@opentelemetry/instrumentation-fastify': {},
       }),
-      new HttpInstrumentation(),
-      fastifyInstrumentation,
     ],
   });
 

@@ -1,10 +1,10 @@
+import openTelemetryPlugin from '@autotelic/fastify-opentelemetry';
 import AutoLoad, { AutoloadPluginOptions } from '@fastify/autoload';
 import fastifyStatic from '@fastify/static';
 import { context, trace } from '@opentelemetry/api';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { join } from 'path';
 import { tracer as tracing } from './tracing';
-const openTelemetryPlugin = require('@autotelic/fastify-opentelemetry');
 
 export type AppOptions = {} & Partial<AutoloadPluginOptions>;
 
