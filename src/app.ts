@@ -3,9 +3,9 @@ import AutoLoad, { AutoloadPluginOptions } from '@fastify/autoload';
 import fastifyStatic from '@fastify/static';
 import { context, trace } from '@opentelemetry/api';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
+import fastifyRacing from 'fastify-racing';
 import { join } from 'path';
 import { tracer as tracing } from './tracing';
-
 export type AppOptions = {} & Partial<AutoloadPluginOptions>;
 
 // const ServerOptions: RawServerBase = {
@@ -19,7 +19,7 @@ const app: FastifyPluginAsync<AppOptions> = async (fastify: FastifyInstance<any>
     dir: join(__dirname, 'plugins'),
     options: Object.assign({}, opts),
   });
-
+  await fastify.register(fastifyRacing, { handleError: true });
   await fastify.register(AutoLoad, {
     dir: join(__dirname, 'routes'),
     options: Object.assign({}, opts),
