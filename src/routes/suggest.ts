@@ -410,7 +410,7 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
     const signal = request.race();
     const result: AbortEvent | unknown = await Promise.race([signal, fetchResult(signal, request, reply)]);
     if ((<AbortEvent>result).type === 'aborted') return '';
-    else return `${result}`;
+    else return result;
   });
 };
 
