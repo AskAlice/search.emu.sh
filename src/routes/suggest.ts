@@ -50,7 +50,6 @@ const sendReply = (request, results, reply) => {
   googleRes[verbatimrelevance] = typeof results[0] !== 'undefined' ? results[0][`${suggestRelevance}`] : 555;
   // console.log(googleResType);
   searchFormat.push(googleRes);
-  console.log('\n\n\nSearchFormat:\n');
   console.log(JSON.stringify(searchFormat));
   return reply
     .code(200)
@@ -186,7 +185,6 @@ const fetchResult = async (signal, request, reply) => {
     });
   }
 
-  console.log(`PRE-async tasks \n\n ${JSON.stringify(results)}`);
   if (results.length > 0) {
     childSpan.end();
     return sendReply(request, results, reply);
@@ -270,7 +268,8 @@ const fetchResult = async (signal, request, reply) => {
       //DuckDuckGo bangs
       new Promise<Array<any>>(async (resolve, reject) => {
         if (typeof bangSlug !== 'string' || request.query.q.trim() === '') {
-          console.log('rejecting'), reject();
+          console.log('rejecting');
+          reject();
         } else {
           let results = [];
           const bangRequest: AxiosRequestConfig = {
@@ -350,11 +349,9 @@ const fetchResult = async (signal, request, reply) => {
     ]);
     console.log(`results::: ${results}`);
   } catch (e) {
-    console.log(e.message);
-    console.log(e.trace);
+    console.error(e.message);
   }
   if (results.length === 0) {
-    console.log('\n\n\n\n\n\n\n\n\noofmn\n\n\n\n\n\n\n');
     results = await new Promise<Array<any>>((resolve, reject) => {
       const options = {
         Method: 'GET',
@@ -401,7 +398,6 @@ const fetchResult = async (signal, request, reply) => {
     });
   }
   childSpan.end();
-  console.log('sending reply');
   reply.code(200);
   return sendReply(request, results, reply);
 };
