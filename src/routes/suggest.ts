@@ -285,79 +285,79 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         new Promise<Array<any>>(async (resolve, reject) => {
           if (typeof bangSlug !== 'string' || request.query.q.trim() === '') {
             console.log('rejecting'), reject();
-          }
-
-          let results = [];
-          const bangRequest: AxiosRequestConfig = {
-            url: `https://api.duckduckgo.com/?q=${request.query.q.trim()}&format=json&pretty=0&no_redirect=1`,
-          };
-          const bangsRequest: AxiosRequestConfig = {
-            url: `https://duckduckgo.com/ac/?q=${encodeURIComponent(
-              !searchingBang ? request.query.q.trim() : `!${bangSlug}`
-            )}&format=json&pretty=0&no_redirect=1&kl=wt-wt`,
-          };
-          await Promise.all([ax.request(bangRequest), ax.request(bangsRequest)]).then(([{ data: bangs }, { data: bangss }]) => {
-            if (bangs?.Redirect) {
-              console.log('redirect');
-              if (bangs?.Image)
-                results.push({
-                  suggestion: `${request.query.q}`,
-                  [`${suggestType}`]: 'ENTITY',
-                  [`${suggestSubtypes}`]: [512, 199, 175],
-                  [`${suggestDetail}`]: {
-                    a: `${bangs?.Redirect}`,
-                    dc: '#DE5833',
-                    i: `${bangs?.Image.startsWith('http') ? bangs?.Image : `https://duckduckgo.com/${bangs?.Image}`}`,
-                    q: 'redirect',
-                    zae: '/g/test',
-                    t: `${request.query.q.trim()}`,
-                  },
-                  [`${suggestRelevance}`]: 900 - results.length,
-                });
-            }
-            // console.log(bangs);
-
-            bangss.forEach((b) => {
-              if (!searchingBang) {
-                if (b?.image?.length > 0) {
-                  // b.image = b.image.substring(0, b.image.indexOf('?'));
-                  b.image = b.image += '?cache=' + (Math.random() + 1).toString(36).substring(7);
-                  results.push({
-                    suggestion: `${b.phrase} ${search ? `${search}` : ''}`,
-                    [`${suggestType}`]: 'ENTITY',
-                    [`${suggestSubtypes}`]: ['DuckDuckGo'],
-                    [`${suggestDetail}`]: {
-                      a: b.snippet,
-                      dc: '#DE5833',
-                      i: b.image,
-                      q: 'bang',
-                      zae: '/g/test',
-                      t: `${b.phrase} - ${typeof b.snippet !== 'undefined' ? ` ${b.snippet}` : ''}`,
-                    },
-                    [`${suggestRelevance}`]: 6000 - results.length,
-                  });
-                }
-              } else {
-                if (b?.phrase === `!${bangSlug}`) {
+          } else {
+            let results = [];
+            const bangRequest: AxiosRequestConfig = {
+              url: `https://api.duckduckgo.com/?q=${request.query.q.trim()}&format=json&pretty=0&no_redirect=1`,
+            };
+            const bangsRequest: AxiosRequestConfig = {
+              url: `https://duckduckgo.com/ac/?q=${encodeURIComponent(
+                !searchingBang ? request.query.q.trim() : `!${bangSlug}`
+              )}&format=json&pretty=0&no_redirect=1&kl=wt-wt`,
+            };
+            await Promise.all([ax.request(bangRequest), ax.request(bangsRequest)]).then(([{ data: bangs }, { data: bangss }]) => {
+              if (bangs?.Redirect) {
+                console.log('redirect');
+                if (bangs?.Image)
                   results.push({
                     suggestion: `${request.query.q}`,
                     [`${suggestType}`]: 'ENTITY',
-                    [`${suggestSubtypes}`]: ['DuckDuckGo'],
+                    [`${suggestSubtypes}`]: [512, 199, 175],
                     [`${suggestDetail}`]: {
                       a: `${bangs?.Redirect}`,
                       dc: '#DE5833',
-                      i: b.image,
-                      q: 'alice=true',
+                      i: `${bangs?.Image.startsWith('http') ? bangs?.Image : `https://duckduckgo.com/${bangs?.Image}`}`,
+                      q: 'redirect',
                       zae: '/g/test',
-                      t: `${b.phrase} - ${typeof b.snippet !== 'undefined' ? ` ${b.snippet}` : ''}`,
+                      t: `${request.query.q.trim()}`,
                     },
-                    [`${suggestRelevance}`]: 800 - results.length,
+                    [`${suggestRelevance}`]: 900 - results.length,
                   });
-                }
               }
-              console.log('result');
+              // console.log(bangs);
+
+              bangss.forEach((b) => {
+                if (!searchingBang) {
+                  if (b?.image?.length > 0) {
+                    // b.image = b.image.substring(0, b.image.indexOf('?'));
+                    b.image = b.image += '?cache=' + (Math.random() + 1).toString(36).substring(7);
+                    results.push({
+                      suggestion: `${b.phrase} ${search ? `${search}` : ''}`,
+                      [`${suggestType}`]: 'ENTITY',
+                      [`${suggestSubtypes}`]: ['DuckDuckGo'],
+                      [`${suggestDetail}`]: {
+                        a: b.snippet,
+                        dc: '#DE5833',
+                        i: b.image,
+                        q: 'bang',
+                        zae: '/g/test',
+                        t: `${b.phrase} - ${typeof b.snippet !== 'undefined' ? ` ${b.snippet}` : ''}`,
+                      },
+                      [`${suggestRelevance}`]: 6000 - results.length,
+                    });
+                  }
+                } else {
+                  if (b?.phrase === `!${bangSlug}`) {
+                    results.push({
+                      suggestion: `${request.query.q}`,
+                      [`${suggestType}`]: 'ENTITY',
+                      [`${suggestSubtypes}`]: ['DuckDuckGo'],
+                      [`${suggestDetail}`]: {
+                        a: `${bangs?.Redirect}`,
+                        dc: '#DE5833',
+                        i: b.image,
+                        q: 'alice=true',
+                        zae: '/g/test',
+                        t: `${b.phrase} - ${typeof b.snippet !== 'undefined' ? ` ${b.snippet}` : ''}`,
+                      },
+                      [`${suggestRelevance}`]: 800 - results.length,
+                    });
+                  }
+                }
+                console.log('result');
+              });
             });
-          });
+          }
           if (results.length > 0) resolve(results);
           else reject('no results');
         }),
