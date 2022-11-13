@@ -16,6 +16,7 @@ const httpsAgent = new https.Agent({ keepAlive: true });
 const ax = axios.create({
   httpAgent, // httpAgent: httpAgent -> for non es6 syntax
   httpsAgent,
+  timeout: 2000,
 });
 
 const apiFetch = (options: AxiosRequestConfig, callback: (response) => Array<any>) => {
