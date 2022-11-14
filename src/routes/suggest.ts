@@ -391,7 +391,7 @@ const fetchResult = async (signal, request, reply) => {
           }
         })
         .catch((error) => {
-          console.error(error);
+          console.error(error.message);
           reject(error);
           return;
         });
