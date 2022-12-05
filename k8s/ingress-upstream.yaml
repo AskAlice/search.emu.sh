@@ -11,7 +11,7 @@ spec:
       protocol: TCP
       targetPort: 8080
   selector:
-    app: node-express
+    app: search
   sessionAffinity: None
   type: ClusterIP
 status:
