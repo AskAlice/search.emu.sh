@@ -387,6 +387,7 @@ const fetchResult = async (signal, request, reply) => {
           if (results.length > 0) {
             resolve(results);
           } else {
+            console.log('rejecting google promise');
             reject();
           }
         })
@@ -404,8 +405,21 @@ const fetchResult = async (signal, request, reply) => {
 const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   fastify.get('/suggest', async function (request: any, reply) {
     const signal = request.race();
-    const result: AbortEvent | unknown = await Promise.race([signal, fetchResult(signal, request, reply)]);
-    if ((<AbortEvent>result).type === 'aborted') return '';
+    const result: AbortEvent | unknown = await Promise.race([
+      signal,
+      new Promise(async (resolve, reject) => {
+        let result = '';
+        try {
+          result = await fetchResult(signal, request, reply);
+          resolve(result);
+        } catch (e) {
+          console.error(e?.message || e);
+          result = e?.message || e;
+          reject(result);
+        }
+      }),
+    ]);
+    if ((<AbortEvent>result).type === 'aborted') return 'aborted';
     else return result;
   });
 };
