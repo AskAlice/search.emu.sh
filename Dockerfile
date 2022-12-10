@@ -6,6 +6,8 @@ ENV COMMIT_ID=${COMMIT_ID}
 COPY package*.json ./
 RUN npm install
 COPY . .
-RUN npm ci --only=production
+RUN npm ci
+RUN npm i -g typescript
+RUN npm run build:ts
 EXPOSE 8080
 CMD ["npm", "run", "production"]

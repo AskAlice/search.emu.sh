@@ -19,3 +19,8 @@ services:
     image: openzipkin/zipkin:latest
     ports:
       - '9412:9411'
+  search:
+    image: ghcr.io/askalice/search.emu.sh:master
+    restart: always
+    ports:
+      - '3006:8080'

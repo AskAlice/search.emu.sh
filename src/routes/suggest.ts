@@ -148,7 +148,6 @@ const fetchResult = async (signal, request, reply) => {
       httpAgent,
     };
 
-    console.log(JSON.stringify(opt));
     const cachedPrice = cache.get(assets[0].assetSymbol);
     let cryptoData: any = { data: { USD: cachedPrice } };
     if (typeof cachedPrice === 'undefined') {
@@ -419,7 +418,7 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         }
       }),
     ]);
-    if ((<AbortEvent>result).type === 'aborted') return 'aborted';
+    if ((<AbortEvent>result)?.type === 'aborted') return 'aborted';
     else return result;
   });
 };
