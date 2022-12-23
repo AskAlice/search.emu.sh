@@ -279,68 +279,71 @@ const fetchResult = async (signal, request, reply) => {
               !searchingBang ? request.query.q.trim() : `!${bangSlug}`
             )}&format=json&pretty=0&no_redirect=1&kl=wt-wt`,
           };
-          await Promise.all([ax.request(bangRequest), ax.request(bangsRequest)]).then(([{ data: bangs }, { data: bangss }]) => {
-            if (bangs?.Redirect) {
-              console.log('redirect');
-              if (bangs?.Image)
-                results.push({
-                  suggestion: `${request.query.q}`,
-                  [`${suggestType}`]: 'ENTITY',
-                  [`${suggestSubtypes}`]: [512, 199, 175],
-                  [`${suggestDetail}`]: {
-                    a: `${bangs?.Redirect}`,
-                    dc: '#DE5833',
-                    i: `${bangs?.Image.startsWith('http') ? bangs?.Image : `https://duckduckgo.com/${bangs?.Image}`}`,
-                    q: 'redirect',
-                    zae: '/g/test',
-                    t: `${request.query.q.trim()}`,
-                  },
-                  [`${suggestRelevance}`]: 900 - results.length,
-                });
-            }
-            // console.log(bangs);
-
-            bangss.forEach((b) => {
-              if (!searchingBang) {
-                if (b?.image?.length > 0) {
-                  // b.image = b.image.substring(0, b.image.indexOf('?'));
-                  b.image = b.image += '?cache=' + (Math.random() + 1).toString(36).substring(7);
-                  results.push({
-                    suggestion: `${b.phrase} ${search ? `${search}` : ''}`,
-                    [`${suggestType}`]: 'ENTITY',
-                    [`${suggestSubtypes}`]: ['DuckDuckGo'],
-                    [`${suggestDetail}`]: {
-                      a: b.snippet,
-                      dc: '#DE5833',
-                      i: b.image,
-                      q: 'bang',
-                      zae: '/g/test',
-                      t: `${b.phrase} - ${typeof b.snippet !== 'undefined' ? ` ${b.snippet}` : ''}`,
-                    },
-                    [`${suggestRelevance}`]: 6000 - results.length,
-                  });
-                }
-              } else {
-                if (b?.phrase === `!${bangSlug}`) {
+          await Promise.all([ax.request(bangRequest).catch((e) => console.log(e.code)), ax.request(bangsRequest).catch((e) => console.log(e.code))])
+            .then((res: any) => {
+              const [{ data: bangs }, { data: bangss }] = res;
+              if (bangs?.Redirect) {
+                console.log('redirect');
+                if (bangs?.Image)
                   results.push({
                     suggestion: `${request.query.q}`,
                     [`${suggestType}`]: 'ENTITY',
-                    [`${suggestSubtypes}`]: ['DuckDuckGo'],
+                    [`${suggestSubtypes}`]: [512, 199, 175],
                     [`${suggestDetail}`]: {
                       a: `${bangs?.Redirect}`,
                       dc: '#DE5833',
-                      i: b.image,
-                      q: 'alice=true',
+                      i: `${bangs?.Image.startsWith('http') ? bangs?.Image : `https://duckduckgo.com/${bangs?.Image}`}`,
+                      q: 'redirect',
                       zae: '/g/test',
-                      t: `${b.phrase} - ${typeof b.snippet !== 'undefined' ? ` ${b.snippet}` : ''}`,
+                      t: `${request.query.q.trim()}`,
                     },
-                    [`${suggestRelevance}`]: 800 - results.length,
+                    [`${suggestRelevance}`]: 900 - results.length,
                   });
-                }
               }
-              console.log('result');
-            });
-          });
+              // console.log(bangs);
+
+              bangss.forEach((b) => {
+                if (!searchingBang) {
+                  if (b?.image?.length > 0) {
+                    // b.image = b.image.substring(0, b.image.indexOf('?'));
+                    b.image = b.image += '?cache=' + (Math.random() + 1).toString(36).substring(7);
+                    results.push({
+                      suggestion: `${b.phrase} ${search ? `${search}` : ''}`,
+                      [`${suggestType}`]: 'ENTITY',
+                      [`${suggestSubtypes}`]: ['DuckDuckGo'],
+                      [`${suggestDetail}`]: {
+                        a: b.snippet,
+                        dc: '#DE5833',
+                        i: b.image,
+                        q: 'bang',
+                        zae: '/g/test',
+                        t: `${b.phrase} - ${typeof b.snippet !== 'undefined' ? ` ${b.snippet}` : ''}`,
+                      },
+                      [`${suggestRelevance}`]: 6000 - results.length,
+                    });
+                  }
+                } else {
+                  if (b?.phrase === `!${bangSlug}`) {
+                    results.push({
+                      suggestion: `${request.query.q}`,
+                      [`${suggestType}`]: 'ENTITY',
+                      [`${suggestSubtypes}`]: ['DuckDuckGo'],
+                      [`${suggestDetail}`]: {
+                        a: `${bangs?.Redirect}`,
+                        dc: '#DE5833',
+                        i: b.image,
+                        q: 'alice=true',
+                        zae: '/g/test',
+                        t: `${b.phrase} - ${typeof b.snippet !== 'undefined' ? ` ${b.snippet}` : ''}`,
+                      },
+                      [`${suggestRelevance}`]: 800 - results.length,
+                    });
+                  }
+                }
+                console.log('result');
+              });
+            })
+            .catch((e) => console.log(e.code));
         }
         if (results.length > 0) resolve(results);
         else reject('no results');
@@ -412,11 +415,11 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
           result = await fetchResult(signal, request, reply);
           resolve(result);
         } catch (e) {
-          console.error(e?.message || e);
-          result = e?.message || e;
+          console.error(e?.message || e?.code || e);
+          result = e?.message || e?.code || e;
           reject(result);
         }
-      }),
+      }).catch((e) => console.log(e.code)),
     ]);
     if ((<AbortEvent>result)?.type === 'aborted') return 'aborted';
     else return result;

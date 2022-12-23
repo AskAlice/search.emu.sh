@@ -31,18 +31,18 @@ const search: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
       return reply.code(302).header('Location', '/');
     } else {
       let hasBang = searchRegex.groups.hasBang === '!' ? true : false;
-      if (hasBang) {
-        const a = newBang([true, hasBang], `https://duckduckgo.com/?q=${encodeURIComponent(request.query.q)}`);
-        if (typeof a === typeof reply) {
-          return a;
-        }
-      }
       suggestions.forEach((s) => {
         const a = newBang([bang, ...s.aliases], s.url.replace(`~QUERYHERE~`, search));
         if (typeof a === typeof reply) {
           return a;
         }
       });
+      if (hasBang) {
+        const a = newBang([true, hasBang], `https://duckduckgo.com/?q=${encodeURIComponent(request.query.q)}`);
+        if (typeof a === typeof reply) {
+          return a;
+        }
+      }
       console.log(`searchRegex groups: ${JSON.stringify(searchRegex.groups)}`);
 
       if (useApiKeys && typeof process?.env?.OPENAI_API_KEY !== 'undefined' && process?.env?.OPENAI_API_KEY?.length) {

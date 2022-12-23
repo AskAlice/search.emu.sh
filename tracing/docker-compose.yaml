@@ -24,3 +24,5 @@ services:
     restart: always
     ports:
       - '3006:8080'
+    env_file:
+      - ../.env
