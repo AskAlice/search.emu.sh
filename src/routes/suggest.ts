@@ -184,10 +184,10 @@ const fetchResult = async (signal, request, reply) => {
     });
   }
 
-  if (results.length > 0) {
-    childSpan.end();
-    return sendReply(request, results, reply);
-  }
+  // if (results.length > 0) {
+  //   childSpan.end();
+  //   return sendReply(request, results, reply);
+  // }
   try {
     results = await Promise.any([
       // Dig and ip2location
@@ -340,8 +340,8 @@ const fetchResult = async (signal, request, reply) => {
                     });
                   }
                 }
-                console.log('result');
               });
+              if (results.length > 0) resolve(results);
             })
             .catch((e) => console.log(e.code));
         }

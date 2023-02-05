@@ -1,9 +1,10 @@
-import axios, { AxiosRequestConfig } from 'axios';
-import { FastifyPluginAsync } from 'fastify';
-import http from 'http';
-import https from 'https';
-import redirectBody from '../redirectBody';
-import suggestions from '../suggestions';
+import axios from "axios";
+import { FastifyPluginAsync } from "fastify";
+
+import http from "http";
+import https from "https";
+import redirectBody from "../redirectBody";
+import suggestions from "../suggestions";
 const httpAgent = new http.Agent({ keepAlive: true });
 const httpsAgent = new https.Agent({ keepAlive: true });
 const ax = axios.create({
@@ -12,25 +13,25 @@ const ax = axios.create({
 });
 
 const search: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
-  fastify.get('/search', async (request: any, reply) => {
+  fastify.get("/search", async (request: any, reply) => {
     let useApiKeys: boolean = false; // query param to actually utilize the API keys specified in .env
-    if (request.query?.useApiKeys === 'true') {
+    if (request.query?.useApiKeys === "true") {
       useApiKeys = true;
     }
     const searchRegex = request.query?.q?.match(/(?<hasBang>\!?)(?<bang>(?<=\!)[\w\d-_]+)?([\s\+]+)?(?<search>.*)?/);
     let search = searchRegex.groups.search;
-    const bang = searchRegex.groups.bang?.toLowerCase() || '';
-    if (typeof search === 'undefined') search = '';
+    const bang = searchRegex.groups.bang?.toLowerCase() || "";
+    if (typeof search === "undefined") search = "";
     let privatelySearch = false;
     const newBang = (comparisons, url) => {
       const comp = Array.from(new Set(comparisons));
       if (comp.length !== comparisons.length)
-        return reply.type('text/html; charset=UTF-8').header('Referrer-Policy', 'origin').send(redirectBody(url));
+        return reply.type("text/html; charset=UTF-8").header("Referrer-Policy", "origin").send(redirectBody(url));
     };
     if (!request.query?.q) {
-      return reply.code(302).header('Location', '/');
+      return reply.code(302).header("Location", "/");
     } else {
-      let hasBang = searchRegex.groups.hasBang === '!' ? true : false;
+      let hasBang = searchRegex.groups.hasBang === "!" ? true : false;
       suggestions.forEach((s) => {
         const a = newBang([bang, ...s.aliases], s.url.replace(`~QUERYHERE~`, search));
         if (typeof a === typeof reply) {
@@ -43,50 +44,7 @@ const search: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
           return a;
         }
       }
-      console.log(`searchRegex groups: ${JSON.stringify(searchRegex.groups)}`);
-
-      if (useApiKeys && typeof process?.env?.OPENAI_API_KEY !== 'undefined' && process?.env?.OPENAI_API_KEY?.length) {
-        try {
-          let url = 'https://api.openai.com/v1/classifications';
-          let labels = ['Neutral', 'Health', 'Sensitive Subjects', 'Drug'];
-          let trainingExamples = [
-            ['LSD', 'Drug'],
-            ['Why do I have back pain', 'Health'],
-            ['covid cases', 'Neutral'],
-            [`Ehler's Danlos`, 'Health'],
-            ['pseudoxanthoma elasticum', 'Health'],
-            [`Ehler's Danlos Syndrome`, 'Health'],
-            ['darknet', 'Sensitive Subjects'],
-            ['covid test sites', 'Neutral'],
-            ['covid', 'Health'],
-            ['cvs near me', 'Neutral'],
-            ['Sex', 'Sensitive Subjects'],
-          ];
-          let options: AxiosRequestConfig = {
-            method: 'POST',
-            httpsAgent,
-            httpAgent,
-            url,
-            headers: {
-              Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            data: `{"examples":${JSON.stringify(trainingExamples)},"query":"${request.query.q.replace(
-              /['#$^%&\*\;\\|\<\>\+\_\,!\(\)]+/g,
-              ''
-            )}","search_model":"ada","model":"curie","labels":${JSON.stringify(labels)}}`,
-          };
-
-          let classification = (await ax.request(options)).data;
-          console.log(classification);
-          console.log(`Text: ${search}`);
-          const badCategories: Array<string> = ['Drug', 'Health', 'Sensitive Subjects'];
-          privatelySearch = new RegExp(badCategories.join('|')).test(classification.label);
-        } catch (e) {
-          console.log('OpenAI API Error: ', e);
-        }
-      }
-      // console.log(`Categories: ${JSON.stringify(categories)}`);
+      // console.log(`searchRegex groups: ${JSON.stringify(searchRegex.groups)}`);
 
       if (!hasBang) {
         if (!privatelySearch) {
