@@ -12,7 +12,7 @@
     "predeploy": "npm run build:ts",
     "production": "cross-env NODE_ENV=production fastify start -l info dist/app.js -p 8080",
     "build:ts": "tsc",
-    "dev": "tsc && concurrently -k -p \"[{name}]\" -n \"search.emu.sh\" -c \"yellow.bold,cyan.bold\" \"tsc -w\" \"fastify start --ignore-watch=.ts$ -p 8080 -w -l info -P dist/app.js\""
+    "dev": "tsc && concurrently -k -p \"[{name}]\" -n \"search.emu.sh\" -c \"yellow.bold,cyan.bold\" \"tsc -w\" \"fastify start --ignore-watch=.ts$ -p 3006 -w -l info -P dist/app.js\""
   },
   "keywords": [],
   "author": "",
@@ -46,6 +46,7 @@
     "maxmind": "^4.3.2",
     "node-cache": "^5.1.2",
     "node-dig-dns": "^0.3.0",
+    "openai": "^3.1.0",
     "ping": "^0.4.1"
   },
   "devDependencies": {
