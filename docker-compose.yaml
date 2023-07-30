@@ -1,0 +1,9 @@
+version: "3"
+services:
+  search:
+    image: ghcr.io/askalice/search.emu.sh:master
+    restart: always
+    ports:
+      - "3006:8080"
+    env_file:
+      - .env

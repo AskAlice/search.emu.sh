@@ -211,6 +211,7 @@ const fetchResult = async (signal, request, reply) => {
               if (await maxmind.validate(ip)) {
                 const lookup = await maxmind.open<CityResponse>("./src/GeoLite2-City.mmdb");
                 geolocation = await lookup.get(ip);
+                console.log(JSON.stringify(geolocation))
               }
               console.log("hmm");
               results.push({
@@ -349,6 +350,7 @@ const fetchResult = async (signal, request, reply) => {
   } catch (e) {
     console.error(e.message);
   }
+  console.log("results length", results.length);
   if (results.length === 0) {
     results = await new Promise<Array<any>>((resolve, reject) => {
       const options = {
@@ -356,11 +358,12 @@ const fetchResult = async (signal, request, reply) => {
         url: "https://www.google.com/complete/search",
         params: googleQuery,
         headers: {
-          "x-client-data": "CJS2yQEIpbbJAQjEtskBCKmdygEIvY7LAQjQmssBCKCgywEI5/HLAQis8ssBCN3yywEI6fLLAQjv98sBCJn4ywEItPjLAQie+csBGI6eywEYuvLLARjf+csB",
+          "x-client-data": "CKu1yQEIhbbJAQijtskBCKqdygEIm9/KAQiWocsBCPmKzQEIlo3NAQjtkc0BCIKTzQEIh5XNAQiXmM0BCNugzQEIgKbNAQjQp80BCLepzQEI5avNAQisr80BCNW0zQEI1LXNAQjqts0BCI+4zQEI27jNAQiXuc0BCIm6zQEIubvNAQiwvM0BCO+8zQEInr3NAQi4vc0BCMG9zQEI4r3NARikr80BGOmyzQE=",
           "sec-fetch-site": "none",
           "sec-fetch-mode": "no-cors",
           "sec-fetch-dest": "empty",
-          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+          "accept-encoding": "gzip, deflate, br",
           "accept-language": "en-US,en;q=0.9",
           cookie: "cgic=IgMqLyo",
         },
