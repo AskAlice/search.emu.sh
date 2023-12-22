@@ -16,6 +16,7 @@
     "target": "es2020",
     "noImplicitAny": false,
     "noUnusedLocals": false,
+    "sourceMap": true,
     "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,

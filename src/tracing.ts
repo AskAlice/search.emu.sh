@@ -1,50 +1,89 @@
-import opentelemetry from '@opentelemetry/api';
+import { DiagConsoleLogger, DiagLogLevel, diag } from '@opentelemetry/api';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { JaegerExporter } from '@opentelemetry/exporter-jaeger';
-import { registerInstrumentations } from '@opentelemetry/instrumentation';
+import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
+import { CompositePropagator, HttpBaggagePropagator, HttpTraceContextPropagator } from '@opentelemetry/core';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-grpc';
+import { PrometheusExporter } from '@opentelemetry/exporter-prometheus';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
 import { FastifyInstrumentation } from '@opentelemetry/instrumentation-fastify';
+import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
+import { B3InjectEncoding, B3Propagator } from '@opentelemetry/propagator-b3';
 import { Resource } from '@opentelemetry/resources';
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
-import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
+import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
+import { NodeSDK } from '@opentelemetry/sdk-node';
+import { BasicTracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
-const create = () => {
-  const options = {
-    tags: [], // optional
-    // You can use the default UDPSender
-    host: 'localhost', // optional
-    port: 6832, // optional
-    // OR you can use the HTTPSender as follows
-    // endpoint: 'http://localhost:16686/api/traces',
-    maxPacketSize: 65000, // optional
-  };
-  const jaeger = new JaegerExporter(options);
-  const provider = new NodeTracerProvider({
-    resource: new Resource({
-      [SemanticResourceAttributes.SERVICE_NAME]: 'search',
-    }),
-  });
-  const fastifyInstrumentation = new FastifyInstrumentation();
-  registerInstrumentations({
-    tracerProvider: provider,
-    instrumentations: [
-      // Fastify instrumentation expects HTTP layer to be instrumented
-      getNodeAutoInstrumentations({
-        // load custom configuration for http instrumentation
-        '@opentelemetry/instrumentation-http': {},
-        '@opentelemetry/instrumentation-fastify': {},
-      }),
-    ],
-  });
+// For troubleshooting, set the log level to DiagLogLevel.DEBUG
 
-  //   const exporter = new CollectorTraceExporter();
-  //   provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
-  //   provider.addSpanProcessor(new BatchSpanProcessor(new ConsoleSpanExporter()));
-  provider.addSpanProcessor(new BatchSpanProcessor(jaeger));
+const otelLogLevel = process.env?.OTEL_DEBUG === 'true' ? diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG) : DiagLogLevel.INFO || DiagLogLevel.INFO;
 
-  // Initialize the OpenTelemetry APIs to use the NodeTracerProvider bindings
-  provider.register({});
-  const tracer = opentelemetry.trace.getTracer('search');
-  return { tracer, fastifyInstrumentation, provider };
+const collectorOptions = {
+    url: 'grpc://localhost:4317',
+
 };
-let { tracer, fastifyInstrumentation, provider } = create();
-export { tracer, fastifyInstrumentation, provider };
+const metricCollectorOptions = {
+    url: 'grpc://0.0.0.0:4317',
+};
+
+const metricExporter = new OTLPMetricExporter();
+// const meterProvider = new MeterProvider({});
+// const provider = new BasicTracerProvider();
+const exporter = new OTLPTraceExporter();
+// provider.addSpanProcessor(new BatchSpanProcessor(exporter, {
+//   // The maximum queue size. After the size is reached spans are dropped.
+//   maxQueueSize: 100,
+//   // The maximum batch size of every export. It must be smaller or equal to maxQueueSize.
+//   maxExportBatchSize: 10,
+//   // The interval between two consecutive exports
+//   scheduledDelayMillis: 500,
+//   // How long the export can run before it is cancelled
+//   exportTimeoutMillis: 30000,
+// }));
+
+// provider.register();
+
+// provider.addSpanProcessor(new BatchSpanProcessor(exporter));
+// meterProvider.addMetricReader(new PeriodicExportingMetricReader({
+//   exporter: metricExporter,
+//   exportIntervalMillis: 1000,
+// }));
+
+// opentelemetry.metrics.setGlobalMeterProvider(meterProvider);
+const prometheusExp = new PrometheusExporter({ port: 9462 });
+// record a metric event.
+const http = new HttpInstrumentation();
+const otelSDK = new NodeSDK({
+    serviceName: 'search',
+    spanProcessor: new BatchSpanProcessor(exporter),
+    // metricExporter: metricExporter,
+    contextManager: new AsyncLocalStorageContextManager(),
+    resource: new Resource({
+        [SemanticResourceAttributes.SERVICE_NAME]: 'search',
+        [SemanticResourceAttributes.SERVICE_VERSION]: '0.0.0',
+    }),
+
+    textMapPropagator: new CompositePropagator({
+        propagators: [
+            new HttpTraceContextPropagator(),
+            new HttpBaggagePropagator(),
+            new B3Propagator({
+                injectEncoding: B3InjectEncoding.MULTI_HEADER,
+            }),
+        ],
+    }),
+    instrumentations: [
+        getNodeAutoInstrumentations({
+            // load custom configuration for http instrumentation
+            '@opentelemetry/instrumentation-http': {
+                applyCustomAttributesOnSpan: (span) => {
+
+                },
+            },
+        }),
+
+    ],
+});
+// You can also use the shutdown method to gracefully shut down the SDK before process shutdown
+// or on some operating system signal.
+
+export default otelSDK;

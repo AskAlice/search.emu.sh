@@ -1,0 +1,56 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        # cors_allowed_origins:
+        #   - http://*
+        #   - https://*
+  
+  jaeger:
+    protocols:
+      grpc:
+  jaeger/withendpoint:
+    protocols:
+      thrift_http:
+        endpoint: :14268
+exporters:
+  prometheus:
+    endpoint: ":9090"
+    const_labels:
+      job: search
+  otlp/aspecto:
+    endpoint: otelcol.aspecto.io:4317
+    headers:
+      Authorization: 69a09056-3b21-493e-8d87-6077a19f84c6
+
+  logging:
+    loglevel: info
+  otlp:
+    # Doc: https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter/otlpexporter
+    endpoint: tempo:4317
+    tls:
+      # Disabled TLS for this example
+      # Doc : https://github.com/open-telemetry/opentelemetry-collector/tree/main/config/configtls
+      insecure: true
+
+processors:
+  batch:
+extensions:
+  health_check:
+
+  zpages:
+    endpoint: :55679
+service:
+  extensions: [zpages, health_check]
+  pipelines:
+    traces:
+      receivers: [otlp, jaeger/withendpoint, jaeger]
+      exporters: [otlp/aspecto, otlp]
+      processors: [batch]
+    metrics:
+      receivers: [otlp]
+      exporters: [prometheus]
+      processors: [batch]

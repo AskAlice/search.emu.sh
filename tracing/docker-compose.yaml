@@ -1,28 +1,100 @@
-version: '3'
+version: '3.1'
+
 services:
-  # Collector
   collector:
-    image: otel/opentelemetry-collector:0.38.0
+    container_name: search-collector
+    image: otel/opentelemetry-collector-contrib-dev:latest
+    # network_mode: host
     #    image: otel/opentelemetry-collector:latest
     command: ['--config=/conf/collector-config.yaml']
     volumes:
-      - ./collector-config.yaml:/conf/collector-config.yaml
+      - ./etc/collector-config.yaml:/conf/collector-config.yaml
     ports:
       - '9464:9464'
       - '4317:4317'
       - '4318:4318'
-    depends_on:
-      - zipkin-all-in-one
+      - '14268:14268'
+      - '1888:1888' # pprof extension
+      - '8888:8888' # Prometheus metrics exposed by the collector
+      - '8889:8889' # Prometheus exporter metrics
+      - '13133:13133' # health_check extension
+      - '55670:55679' # zpages extension
 
-  # Zipkin
-  zipkin-all-in-one:
-    image: openzipkin/zipkin:latest
+  tempo:
+    container_name: search-tempo
+    image: grafana/tempo:1.5.0
+    command: ['-config.file=/etc/tempo.yaml']
+    volumes:
+      - ./etc/tempo-local.yaml:/etc/tempo.yaml
+      - ./data/tempo-data:/tmp/tempo
     ports:
-      - '9412:9411'
-  search:
-    image: ghcr.io/askalice/search.emu.sh:master
-    restart: always
+      - '14269:14268' # jaeger ingest, Jaeger - Thrift HTTP
+      - '14251:14250' # Jaeger - GRPC
+      - '55680' # OpenTelemetry
+      - '4319:4317' # OTLP GRPC
+      - '4320:4318' # OTLP HTTP
+      - '3100' # tempo
+      - '6831/udp' # Jaeger - Thrift Compact
+      - '6832/udp' # Jaeger - Thrift Binary
+  promtail:
+    container_name: search-promtail
+    image: grafana/promtail:2.2.1
+    command: -config.file=/etc/promtail/promtail.yaml
+    volumes:
+      - ./etc/promtail.yaml:/etc/promtail/promtail.yaml
+      - ./data/logs:/app/logs
+    depends_on:
+      - loki
+  volume_exporter:
+    container_name: search-volume_exporter
+    image: mnadeem/volume_exporter
+    command: ['--volume-dir=tempo:/tmp/tempo', '--volume-dir=logs:/app/logs', '--volume-dir=loki:/tmp/loki']
+    volumes:
+      - ./data/logs:/app/logs
+      - ./data/tempo-data:/tmp/tempo
+      - ./data/loki-data:/tmp/loki
     ports:
-      - '3006:8080'
-    env_file:
-      - ../.env
+      - 9889:9888
+  prometheus:
+    container_name: search-prometheus
+    image: prom/prometheus:latest
+    volumes:
+      - ./etc/prometheus.yaml:/etc/prometheus.yaml
+    entrypoint:
+      - /bin/prometheus
+      - --config.file=/etc/prometheus.yaml
+    ports:
+      - '9090:9090'
+
+  grafana:
+    container_name: search-grafana
+    image: grafana/grafana:9.1.1-ubuntu
+    volumes:
+      - ./data/grafana-data/datasources:/etc/grafana/provisioning/datasources
+      - ./data/grafana-data/dashboards-provisioning:/etc/grafana/provisioning/dashboards
+      - ./data/grafana-data/dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    ports:
+      - '3002:3000'
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+      - volume_exporter
+  loki:
+    image: grafana/loki
+    container_name: search-loki
+    environment:
+      - JAEGER_AGENT_HOST=tempo
+      - JAEGER_ENDPOINT=http://collector:14268/api/traces # send traces to Tempo
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
+    ports:
+      - 3101:3100
+    volumes:
+      - ./etc/loki-local.yaml:/etc/loki/loki-config.yaml
+      - ./data/loki-data:/tmp/loki
+    command: -config.file=/etc/loki/loki-config.yaml

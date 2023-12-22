@@ -1,7 +1,9 @@
 version: "3"
 services:
   search:
-    image: ghcr.io/askalice/search.emu.sh:master
+    container_name: search
+    build: .
+    image: search
     restart: always
     ports:
       - "3006:8080"
