@@ -9,6 +9,8 @@ COPY . .
 RUN npm ci
 RUN npm i -g typescript
 RUN npm run build:ts
+RUN ls -al /search
+RUN ls -al /search/src
 COPY ./src/suggestions/icons /search/dist/suggestions/icons
 FROM node:lts-alpine
 WORKDIR /search

@@ -79,6 +79,17 @@ services:
       - GF_AUTH_DISABLE_LOGIN_FORM=true
     ports:
       - '3002:3000'
+    restart: always
+    env_file:
+      - .env
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.emu.sh`)"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3002"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.tls.certresolver=letsencrypt"
     depends_on:
       - prometheus
       - tempo
@@ -98,3 +109,6 @@ services:
       - ./etc/loki-local.yaml:/etc/loki/loki-config.yaml
       - ./data/loki-data:/tmp/loki
     command: -config.file=/etc/loki/loki-config.yaml
+networks:
+  traefik-public:
+    external: true

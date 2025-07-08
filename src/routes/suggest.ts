@@ -43,6 +43,7 @@ const sendReply = (request, results, reply) => {
   const searchFormat: Array<any> = ["", [], [], []];
   searchFormat[0] = request.query.q;
   try {
+    if(request.query.client !== 'firefox') {
   const decoder = new TextDecoder('utf8');
   results = results.reduce((acc,val) => ([
     ...acc, {...val, 
@@ -56,7 +57,7 @@ const sendReply = (request, results, reply) => {
       },}
     ])
       , []);
-
+  }
   results.forEach((res) => {
     // const converted = request?.query?.format === 'json' ? res : convert(res);
     Object.entries(res).forEach(([k, v], i) => {
@@ -70,17 +71,18 @@ const sendReply = (request, results, reply) => {
 
   googleRes[verbatimrelevance] = typeof results[0] !== "undefined" ? results[0][`${suggestRelevance}`] : 555;
   // console.log(googleResType);
-  searchFormat.push(googleRes);
+  request.query.client !== 'firefox' ? searchFormat.push(googleRes) : searchFormat[3] = googleRes;
 
 }
 catch(e){
   console.log(e);
 }
+const header = (request.query?.client || 'chrome-omni')?.toLowerCase() === 'firefox' ? '' : `)]}'\n`;
   return reply
     .code(200)
     .header("Content-disposition", "attachment; filename=xd.txt")
     .type("text/javascript; charset=UTF-8")
-    .send(`)]}'\n${JSON.stringify(searchFormat)}`);
+    .send(`${header}${JSON.stringify(searchFormat)}`);
 };
 const fetchResult = async (signal, request, reply) => {
   const ax = axios.create({
@@ -112,38 +114,23 @@ const fetchResult = async (signal, request, reply) => {
     entityId: "test",
   });
 
-  let useApiKeys: boolean = false; // query param to actually utilize the API keys specified in .env
-  if (request.query?.useApiKeys === "true") {
-    useApiKeys = true;
-  }
-  // console.log(request.headers);
+  const useApiKeys = request.query?.useApiKeys === "true";
   const searchRegex = request.query?.q?.match(/(?<hasBang>\!?)(?<bang>(?<=\!)[\w\d-_]+)?([\s\+]+)?(?<search>.*)?/);
-  const search = searchRegex?.groups?.search;
-  // let hasBang = searchRegex.groups.hasBang === '!' ? true : false;
+  const { search, bang: bangSlug } = searchRegex?.groups ?? {};
   const q = request.query?.q;
+  const client = request.query?.client?.toLowerCase() ?? 'chrome-omni';
   reply.code(200);
-  const bangSlug = searchRegex?.groups.bang;
   const searchingBang = typeof bangSlug === "string" && typeof search !== "undefined";
   const googleQuery = searchingBang ? { ...request.query, q: search } : request.query;
-  delete googleQuery.useApiKeys; // used internally, don't pass this to google
-  let results = [];
-  function addToResults(suggestion, type, subtypes, detail, relevance) {
-      results.push({
-          suggestion: suggestion,
-          [`${suggestType}`]: type,
-          [`${suggestSubtypes}`]: subtypes,
-          [`${suggestDetail}`]: detail,
-          [`${suggestRelevance}`]: relevance,
-      });
-  }
-  console.log(`search ${search},bangSlug ${bangSlug},googleQuery ${JSON.stringify(googleQuery)}`);
-  suggestions.forEach((s) => {
-    let shouldPush = false;
-    s.aliases.forEach((a) => {
-      if (a.startsWith(bangSlug)) shouldPush = true;
-    });
-    if (shouldPush) {
-      addToResults(`!${s.name}${typeof search !== "undefined" ? ` ${search}` : ""}`, "ENTITY", ["Custom Bang", "BANG", s.url.replace(`~QUERYHERE~`, search)], {
+  delete googleQuery.useApiKeys;
+  const results = [];
+  const addToResults = (suggestion, type, subtypes, detail, relevance) => 
+    results.push({ suggestion, [suggestType]: type, [suggestSubtypes]: subtypes, [suggestDetail]: detail, [suggestRelevance]: relevance });
+
+  console.log(`search ${search}, bangSlug ${bangSlug}, googleQuery ${JSON.stringify(googleQuery)}`);
+  suggestions.forEach(s => {
+    if (s.aliases.some(a => a.startsWith(bangSlug))) {
+      addToResults(`!${s.name}${search ? ` ${search}` : ""}`, "ENTITY", ["Custom Bang", "BANG", s.url.replace(`~QUERYHERE~`, search)], {
         a: s.url.replace(`~QUERYHERE~`, search),
         dc: "#DE5833",
         i: `https://search.emu.sh/icons/${s.favicon}`,
@@ -153,17 +140,13 @@ const fetchResult = async (signal, request, reply) => {
     }
   });
   const cryptoSearch = request.query?.q.trim()?.match(/(?<coef>\d+(?:\.\d+)?)?\s?(?<symbol>.*)?/);
-  let assets =
-    cryptoSearch?.groups?.symbol?.length > 2
-      ? cryptoAssets.filter((a) => a.assetSymbol.toLowerCase() === cryptoSearch?.groups?.symbol?.toLowerCase()).length > 0
-        ? cryptoAssets.filter((a) => a.assetSymbol.toLowerCase() === cryptoSearch?.groups?.symbol?.toLowerCase())
-        : cryptoAssets.filter(
-            (a) =>
-              a.assetSymbol.toLowerCase().startsWith(cryptoSearch?.groups?.symbol?.toLowerCase()) ||
-              a.assetName.toLowerCase() === cryptoSearch?.groups?.symbol?.toLowerCase() ||
-              a.assetSymbol.toLowerCase() === cryptoSearch?.groups?.symbol?.toLowerCase()
-          )
-      : [];
+  const assets = cryptoSearch?.groups?.symbol?.length > 2
+    ? cryptoAssets.filter(a => 
+        a.assetSymbol.toLowerCase() === cryptoSearch?.groups?.symbol?.toLowerCase() ||
+        a.assetSymbol.toLowerCase().startsWith(cryptoSearch?.groups?.symbol?.toLowerCase()) ||
+        a.assetName.toLowerCase() === cryptoSearch?.groups?.symbol?.toLowerCase()
+      )
+    : [];
   console.log(`assets: ${JSON.stringify(assets)}`);
 
   console.log(JSON.stringify(cryptoSearch));
@@ -218,7 +201,7 @@ const fetchResult = async (signal, request, reply) => {
   //   return sendReply(request, results, reply);
   // }
   try {
-    results = await Promise.any([
+    results.push(await Promise.any([
       // Dig and ip2location
       new Promise<Array<any>>(async (resolve, reject) => {
         let results = [];
@@ -348,7 +331,7 @@ const fetchResult = async (signal, request, reply) => {
         if (results.length > 0) resolve(results);
         else reject("no results");
       }),
-    ]);
+    ]));
     console.log(`results::: ${results}`);
   } catch (e) {
     console.error(e.message);
@@ -383,24 +366,37 @@ const fetchResult = async (signal, request, reply) => {
       };
       ax.request(options)
         .then((res) => {
-
-          const data = res.data.replace(/.*/, "").substr(1);
-          const response = JSON.parse(data);
+          let data = res.data;
+          let dataIndex = 3;
+          if(client !== 'firefox'){
+            dataIndex = 4;
+           data = res.data.replace(/.*/, "").substr(1);
+          }
+          console.log(data);
+          function isJsonString(str) {
+            try {
+                JSON.parse(str);
+            } catch (e) {
+                return false;
+            }
+            return true;
+        }
+          const response = isJsonString(data) ? JSON.parse(data) : data;
           console.log(data);
           response[1].forEach((key, i) => {
-            console.log(`entityinfo:`,response[4]?.[`google:suggestdetail`]?.[`google:entityinfo`]);
+            console.log(`entityinfo:`,response[dataIndex]?.[`google:suggestdetail`]?.[`google:entityinfo`]);
 
             let entityInfo = null;
-            if (typeof response[4]?.[`google:suggestdetail`]?.[i]?.[`google:entityinfo`] === 'string'){
-            entityInfo = EntityInfo.fromBinary(protoBase64.dec(response[4]?.[`google:suggestdetail`]?.[i]?.[`google:entityinfo`]));
+            if (typeof response[dataIndex]?.[`google:suggestdetail`]?.[i]?.[`google:entityinfo`] === 'string'){
+            entityInfo = EntityInfo.fromBinary(protoBase64.dec(response[dataIndex]?.[`google:suggestdetail`]?.[i]?.[`google:entityinfo`]));
             }
             
             addToResults(
-              searchingBang ? key.replace(new RegExp(`(^)(${bangSlug}\\s)?`, "g"), `!${bangSlug} ${"$1"}`) : key, response[4][`google:suggesttype`]?.[i], response[4]?.[`google:suggestsubtypes`]?.[i], 
+              searchingBang ? key.replace(new RegExp(`(^)(${bangSlug}\\s)?`, "g"), `!${bangSlug} ${"$1"}`) : key, response[dataIndex][`google:suggestsubtypes`]?.[i] || response[dataIndex][`google:suggesttype`]?.[i]|| [], response[dataIndex]?.[`google:suggestsubtypes`]?.[i]|| [], 
                 entityInfo !== null
                   ? { i: entityInfo?.imageUrl, a: searchingBang ? `${entityInfo?.annotation} via !${bangSlug}`: entityInfo?.annotation, t: entityInfo?.name, dc: entityInfo?.dominantColor, q: entityInfo?.suggestSearchParameters}
-                  : response[4][`google:suggestdetail`]?.[i]|| {},
-              response[4][`google:suggestrelevance`]?.[i]);
+                  : response[dataIndex][`google:suggestdetail`]?.[i]|| {},
+              response[dataIndex][`google:suggestrelevance`]?.[i]);
           }
           );
 

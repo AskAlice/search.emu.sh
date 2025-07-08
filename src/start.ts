@@ -1,15 +1,18 @@
-import Fastify from 'fastify'
-const {execSync} = require('child_process')
+import Fastify from 'fastify';
 import app from './app';
+const {execSync} = require('child_process')
 const fastify = Fastify({
     http2: true,
     logger: true
   })
 fastify.register(app);
 export default function start(otelSDK){
-fastify.listen({ port: 3006 }, function (err, address) {
+// dynamic port allocation
+const port = Number(process.env.PORT) || Number(execSync('shuf -i 3006-10000 -n 1').toString().trim())
+  fastify.log.info(`port: ${port}`)
+  fastify.listen({ port: port, host: "0.0.0.0" }, function (err, address) {
     if (err) {
-        
+      fastify.log.error(`port ${process.env.PORT} is already in use`)
       fastify.log.error(err)
       otelSDK
     .shutdown()

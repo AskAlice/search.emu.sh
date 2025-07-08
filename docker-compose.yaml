@@ -1,11 +1,92 @@
-version: "3"
 services:
   search:
     container_name: search
     build: .
-    image: search
+    image: ghcr.io/askalice/search.emu.sh:master
     restart: always
     ports:
-      - "3006:8080"
+      - published: 3006
+        target: 8080
     env_file:
       - .env
+    networks:
+      - frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.search.rule=Host(`search.emu.sh`)"
+      - "traefik.http.services.search.loadbalancer.server.port=8080"
+      - traefik.http.routers.search.tls.certresolver=cloudflare
+      - traefik.http.routers.search.entrypoints=websecure
+  jaeger:
+    image: jaegertracing/all-in-one:1.6
+    container_name: jaeger
+    environment:
+      - COLLECTOR_ZIPKIN_HTTP_PORT=9411
+    # networks:
+    #   - traefik-public
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jaeger.rule=Host(`jaeger.emu.sh`)"
+      - "traefik.http.services.jaeger.loadbalancer.server.port=16686"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.traefik.service=api@internal"
+      - 'traefik.http.routers.traefik.middlewares=strip'
+      - 'traefik.http.middlewares.strip.stripprefix.prefixes=/traefik'
+
+    ports:
+      - published: 5775
+        target: 5775
+        protocol: udp
+      - published: 6831
+        target: 6831
+        protocol: udp
+      - published: 6832
+        target: 6832
+        protocol: udp
+      - published: 5778
+        target: 5778
+      - published: 16686
+        target: 16686
+      - published: 14268
+        target: 14268
+      - published: 9411
+        target: 9411
+
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    secrets:
+      - cf_token
+    environment:
+      - TZ=America/Denver # Change this to your timezone
+      - CLOUDFLARE_DNS_API_TOKEN_FILE=/run/secrets/cf_token
+      - CLOUDFLARE_HTTP_TIMEOUT=120
+      - CLOUDFLARE_POLLING_INTERVAL=60
+      - CLOUDFLARE_PROPAGATION_TIMEOUT=300
+      - CLOUDFLARE_TTL=300
+    networks:
+      - frontend
+    ports:
+      - 80:80 # HTTP entryPoints
+      - 443:443 # HTTPS entryPoints
+      - 8080:8080 # Dashbaord WebGui 
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro # Docker socket to watch for Traefik
+      - ./traefik.yml:/traefik.yml:ro # Traefik config file
+      - traefik-certs:/certs # Docker volume to store the acme file for the Certifactes
+
+volumes:
+  traefik-certs:
+    name: traefik-certs
+
+networks:
+  frontend:
+    name: frontend
+secrets:
+  cf_token:
+    file: ./cloudflare-token.txt

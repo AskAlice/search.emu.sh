@@ -11,17 +11,27 @@ const root: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
     return result;
   }
   // Declare a route
-  fastify.get("/random", function (request, reply) {
-    reply.code(200).header("Content-Type", "text/html; charset=utf-8").send(`
-    <!doctype html>
-    <html>
-    <head>
-    <title>🙏💖🌈✨</title>
-    </head>
-    <body>${makeid(20480)}
-    </body>
-    </html>`);
-  });
-};
+  const osd = (request, reply)  => {
+    reply.code(200).header("Content-Type", "application/opensearchdescription+xml; charset=utf-8").send(`<?xml version="1.0" encoding="UTF-8"?>
+<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/"
+    xmlns:moz="http://www.mozilla.org/2006/browser/search/">
+  <OutputEncoding>UTF-8</OutputEncoding>
+  <Image height="16" width="16" type="image/x-icon">https://${request.hostname}/favicon.ico</Image>
+  <Image height="16" width="16" type="image/vnd.microsoft.icon">https://${request.hostname}/favicon.ico</Image>
+  <Image height="512" width="512" type="image/png">https://${request.hostname}/logo512.png</Image>
+  <ShortName>search</ShortName>
+  <Description>[Search engine full name and summary]</Description>
+  <InputEncoding>UTF-8</InputEncoding>
+  <Image height="16" width="16">https://${request.hostname}/favicon.ico</Image>
+  <Url  type="text/html"
+      method="GET"
+      template="https://${request.hostname}/search?client=${ /Firefox/i.test(request.headers["user-agent"]) ? 'firefox' : 'chrome'}&amp;useApiKeys=true&amp;q=%s" 
+  />
+  <Url type="application/x-suggestions+json" method="GET" template="https://${request.hostname}/suggest?client=${ /Firefox/i.test(request.headers["user-agent"]) ? 'firefox' : 'chrome'}&amp;useApiKeys=true&amp;q=\{searchTerms\}" />
+</OpenSearchDescription>`);
+  }
+  fastify.get("/osd.xml", osd);
+  fastify.get("/opensearch.xml", osd);
+}
 
 export default root;

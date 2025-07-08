@@ -3,6 +3,9 @@ logs
 *.log
 npm-debug.log*
 **/ghost/*
+loki-data
+tempo-data
+**/tempo-data/*
 # Runtime data
 pids
 *.pid
@@ -67,3 +70,4 @@ dist
 node_modules/*
 .env
 serviceaccount.json
+cloudflare-token.txt
