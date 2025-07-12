@@ -4,7 +4,8 @@ services:
     build: .
     image: ghcr.io/askalice/search.emu.sh:latest
     restart: always
-    ports: 3006:3006
+    ports: 
+      - 3006:3006
     env_file:
       - .env
     networks:
