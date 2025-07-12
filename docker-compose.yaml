@@ -2,7 +2,7 @@ services:
   search:
     container_name: search
     build: .
-    image: ghcr.io/askalice/search.emu.sh:master
+    image: ghcr.io/askalice/search.emu.sh:latest
     restart: always
     ports:
       - published: 3006
