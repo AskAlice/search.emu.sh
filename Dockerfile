@@ -4,9 +4,9 @@ ENV NODE_ENV production
 ARG COMMIT_ID
 ENV COMMIT_ID=${COMMIT_ID}
 COPY package*.json ./
-RUN npm install
-COPY . .
+COPY package.lock.json ./
 RUN npm ci
+COPY . .
 RUN npm i -g typescript
 RUN npm run build:ts
 RUN ls -al /search
