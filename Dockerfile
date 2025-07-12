@@ -4,7 +4,7 @@ ENV NODE_ENV production
 ARG COMMIT_ID
 ENV COMMIT_ID=${COMMIT_ID}
 COPY package*.json ./
-COPY package.lock.json ./
+COPY package-lock.json ./
 RUN npm ci
 COPY . .
 RUN npm i -g typescript
