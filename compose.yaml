@@ -2,9 +2,8 @@ services:
   search:
     container_name: search
     build: .
-    image: search
+    image: ghcr.io/askalice/search.emu.sh:latest
     restart: always
-    ports:
-      - 3006:8080
+    ports: 3006:3006
     env_file:
       - .env
