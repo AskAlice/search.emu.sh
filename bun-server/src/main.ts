@@ -1,14 +1,16 @@
 /**
  * Bun Search Server - Main Entry Point
  * 
+ * Uses Bun.serve() - Bun's high-performance HTTP server
+ * 
  * Features:
- * - HTTP/3 support via TLS (QUIC requires TLS)
- * - Multithreading via Bun's cluster mode
- * - High-performance routing with Bun's native fetch API
+ * - HTTP/1.1, HTTP/2, and HTTP/3 support (with TLS)
+ * - WebSocket support ready
+ * - Streaming responses
+ * - Static file serving with Bun.file()
  */
 
 import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { router } from "./router";
 import { config } from "./config";
 
@@ -20,30 +22,61 @@ const tlsConfig = config.tls.enabled && existsSync(config.tls.certFile) && exist
     }
   : undefined;
 
+/**
+ * Main server using Bun.serve()
+ * 
+ * Bun.serve() is Bun's built-in HTTP server that provides:
+ * - Automatic request/response handling
+ * - TLS/SSL support with HTTP/2 and HTTP/3
+ * - WebSocket upgrade support
+ * - Streaming request/response bodies
+ * - High performance with minimal overhead
+ */
 const server = Bun.serve({
+  // Server configuration
   port: config.port,
   hostname: config.hostname,
   
-  // Enable TLS for HTTP/2 and HTTP/3 support
+  // TLS for HTTPS, HTTP/2, and HTTP/3 (QUIC)
   ...(tlsConfig && { tls: tlsConfig }),
   
-  // Development mode for better error messages
+  // Development mode provides better error messages
   development: config.isDevelopment,
   
-  // Main request handler
-  async fetch(request: Request): Promise<Response> {
-    const startTime = performance.now();
+  // Enable SO_REUSEPORT for load balancing across multiple processes
+  reusePort: true,
+  
+  // Maximum request body size (default: 128MB)
+  maxRequestBodySize: 1024 * 1024 * 10, // 10MB
+  
+  // Idle timeout in seconds
+  idleTimeout: 30,
+  
+  /**
+   * Main fetch handler - called for every HTTP request
+   * This is the core of Bun.serve()
+   */
+  async fetch(request: Request, server): Promise<Response> {
+    const startTime = Bun.nanoseconds();
+    const url = new URL(request.url);
+    
+    // Log request
+    if (config.isDevelopment) {
+      console.log(`[${new Date().toISOString()}] ${request.method} ${url.pathname}`);
+    }
     
     try {
+      // Route the request
       const response = await router(request);
       
-      // Add timing header
-      const duration = (performance.now() - startTime).toFixed(2);
+      // Calculate response time in milliseconds
+      const duration = ((Bun.nanoseconds() - startTime) / 1_000_000).toFixed(2);
+      
+      // Add custom headers
       const headers = new Headers(response.headers);
       headers.set("X-Response-Time", `${duration}ms`);
-      headers.set("X-Powered-By", "Bun");
-      
-      // Add CORS headers
+      headers.set("X-Powered-By", "Bun.serve");
+      headers.set("X-Bun-Version", Bun.version);
       headers.set("Access-Control-Allow-Origin", "*");
       headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
       headers.set("Access-Control-Allow-Headers", "Content-Type");
@@ -55,37 +88,44 @@ const server = Bun.serve({
       });
     } catch (error) {
       console.error("Request error:", error);
-      return new Response(JSON.stringify({ 
-        error: "Internal Server Error",
-        message: error instanceof Error ? error.message : "Unknown error"
-      }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
+      return Response.json(
+        { 
+          error: "Internal Server Error",
+          message: error instanceof Error ? error.message : "Unknown error"
+        },
+        { status: 500 }
+      );
     }
   },
   
-  // Error handler
+  /**
+   * Error handler - called when fetch() throws
+   */
   error(error: Error): Response {
     console.error("Server error:", error);
-    return new Response(JSON.stringify({ 
-      error: "Internal Server Error",
-      message: error.message 
-    }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return Response.json(
+      { 
+        error: "Internal Server Error",
+        message: error.message 
+      },
+      { status: 500 }
+    );
   },
 });
 
+// Server info
 const protocol = tlsConfig ? "https" : "http";
 console.log(`
-🚀 Bun Search Server started!
-   
-   URL: ${protocol}://${server.hostname}:${server.port}
-   HTTP/3: ${tlsConfig ? "Enabled (requires TLS)" : "Disabled (generate certs with: bun run generate-certs)"}
-   Environment: ${config.isDevelopment ? "development" : "production"}
-   PID: ${process.pid}
+╔══════════════════════════════════════════════════════════════╗
+║              Bun Search Server - Bun.serve()                 ║
+╠══════════════════════════════════════════════════════════════╣
+║  URL: ${(protocol + "://" + server.hostname + ":" + server.port).padEnd(53)}║
+║  Bun Version: ${Bun.version.padEnd(45)}║
+║  HTTP/3: ${(tlsConfig ? "Enabled ✓" : "Disabled (run: bun run generate-certs)").padEnd(50)}║
+║  Environment: ${(config.isDevelopment ? "development" : "production").padEnd(45)}║
+║  PID: ${String(process.pid).padEnd(53)}║
+║  reusePort: ${String(true).padEnd(47)}║
+╚══════════════════════════════════════════════════════════════╝
 `);
 
 export { server };

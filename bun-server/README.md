@@ -1,20 +1,67 @@
 # Bun Search Server
 
-A high-performance search server re-implemented using **Bun's built-in web server** with support for **HTTP/3** (via TLS/QUIC) and **multithreading**.
+A high-performance search server built with **Bun.serve()** and **Bun.spawn()** for HTTP/3 support and multi-process parallelism.
+
+## Core Bun APIs Used
+
+### `Bun.serve()` - HTTP Server
+
+The main HTTP server uses Bun's native `Bun.serve()` API which provides:
+
+```typescript
+const server = Bun.serve({
+  port: 3006,
+  hostname: "0.0.0.0",
+  
+  // TLS enables HTTP/2 and HTTP/3 (QUIC)
+  tls: {
+    cert: Bun.file("./certs/cert.pem"),
+    key: Bun.file("./certs/key.pem"),
+  },
+  
+  // Enable kernel-level load balancing across processes
+  reusePort: true,
+  
+  // Request handler
+  async fetch(request: Request, server): Promise<Response> {
+    return new Response("Hello from Bun.serve()!");
+  },
+  
+  // Error handler
+  error(error: Error): Response {
+    return Response.json({ error: error.message }, { status: 500 });
+  },
+});
+```
+
+### `Bun.spawn()` - Process Spawning
+
+For multi-process parallelism, we use `Bun.spawn()` to create worker processes:
+
+```typescript
+const worker = Bun.spawn({
+  cmd: ["bun", "run", "worker.ts"],
+  env: {
+    WORKER_ID: "0",
+    PORT: "3006",
+  },
+  stdout: "inherit",
+  stderr: "inherit",
+  onExit(proc, exitCode, signalCode, error) {
+    console.log(`Worker exited with code ${exitCode}`);
+  },
+});
+```
 
 ## Features
 
-- 🚀 **Bun's Native HTTP Server** - Blazing fast performance with Bun's built-in `Bun.serve()`
-- 🔒 **HTTP/3 Support** - Enabled via TLS certificates (QUIC protocol requires TLS)
-- 🧵 **Multithreading** - Cluster mode utilizing all CPU cores with `SO_REUSEPORT`
-- 🔍 **Custom Bang Searches** - Support for `!gh`, `!g`, `!yt`, etc.
-- 💰 **Crypto Price Lookups** - Real-time cryptocurrency prices
-- 🌐 **DNS Lookups** - DNS over HTTPS queries
-- 📡 **OpenSearch Support** - Browser search integration
-
-## Prerequisites
-
-- [Bun](https://bun.sh/) v1.0.0 or later
+- 🚀 **Bun.serve()** - Native HTTP server with minimal overhead
+- 🔀 **Bun.spawn()** - Multi-process workers for CPU parallelism
+- 🔒 **HTTP/3 Support** - Via TLS/QUIC protocol
+- ⚡ **reusePort** - Kernel-level load balancing
+- 🔍 **Bang Searches** - `!gh`, `!g`, `!yt`, etc.
+- 💰 **Crypto Prices** - Real-time cryptocurrency lookups
+- 🌐 **DNS over HTTPS** - DNS query support
 
 ## Installation
 
@@ -25,7 +72,7 @@ bun install
 
 ## Running the Server
 
-### Single Process Mode
+### Single Process (Bun.serve only)
 
 ```bash
 bun run start
@@ -37,85 +84,74 @@ bun run start
 bun run dev
 ```
 
-### Cluster Mode (Multithreading)
+### Cluster Mode (Bun.spawn + Bun.serve)
 
-Spawns one worker per CPU core for maximum performance:
+Spawns one worker per CPU core, each running its own `Bun.serve()`:
 
 ```bash
 bun run cluster
 ```
 
+Architecture:
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Cluster Manager                          │
+│                   Bun.spawn() × N                           │
+└─────────────────────────────────────────────────────────────┘
+                              │
+         ┌────────────────────┼────────────────────┐
+         ▼                    ▼                    ▼
+┌───────────────┐   ┌───────────────┐   ┌───────────────┐
+│   Worker 0    │   │   Worker 1    │   │   Worker N    │
+│ Bun.serve()   │   │ Bun.serve()   │   │ Bun.serve()   │
+│ :3006         │   │ :3007         │   │ :300X         │
+└───────────────┘   └───────────────┘   └───────────────┘
+```
+
 ## HTTP/3 Support
 
-HTTP/3 requires TLS certificates. Generate self-signed certificates for development:
+HTTP/3 requires TLS. Generate self-signed certificates:
 
 ```bash
 bun run generate-certs
 ```
 
-This creates `certs/cert.pem` and `certs/key.pem`. The server will automatically enable HTTP/2 and HTTP/3 when TLS is configured.
+The server automatically enables HTTP/2 and HTTP/3 when TLS certificates are present.
 
-For production, use certificates from a Certificate Authority (e.g., Let's Encrypt).
-
-### Environment Variables
+## Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | Server port | `3006` |
-| `HOSTNAME` | Server hostname | `0.0.0.0` |
-| `NODE_ENV` | Environment (`development`/`production`) | `development` |
+| `HOSTNAME` | Bind address | `0.0.0.0` |
+| `NODE_ENV` | Environment | `development` |
+| `NUM_WORKERS` | Workers in cluster mode | CPU count |
 | `TLS_ENABLED` | Enable TLS/HTTP3 | `true` |
-| `TLS_CERT` | Path to TLS certificate | `./certs/cert.pem` |
-| `TLS_KEY` | Path to TLS private key | `./certs/key.pem` |
-| `CRYPTOCOMPARE_KEY` | CryptoCompare API key for price lookups | - |
+| `TLS_CERT` | TLS certificate path | `./certs/cert.pem` |
+| `TLS_KEY` | TLS private key path | `./certs/key.pem` |
+| `CRYPTOCOMPARE_KEY` | Crypto price API key | - |
 
 ## API Endpoints
 
-### `GET /`
-Returns server status.
+| Endpoint | Description |
+|----------|-------------|
+| `GET /` | Server status `{ root: true }` |
+| `GET /health` | Health check with PID |
+| `GET /search?q=` | Search with bang support |
+| `GET /suggest?q=` | Search suggestions |
+| `GET /osd.xml` | OpenSearch description |
+| `GET /test` | DNS lookup test |
+| `GET /example` | Example endpoint |
 
-```json
-{ "root": true }
-```
+## Response Headers
 
-### `GET /health`
-Health check endpoint.
+Every response includes:
 
-```json
-{
-  "status": "ok",
-  "timestamp": "2026-01-07T12:00:00.000Z",
-  "pid": 12345
-}
-```
-
-### `GET /search?q={query}`
-Performs search with bang support.
-
-- `!g query` - Google search
-- `!gh query` - GitHub search
-- `!yt query` - YouTube search
-- `!ddg query` - DuckDuckGo search
-- `!npm query` - NPM search
-- `!so query` - Stack Overflow search
-
-### `GET /suggest?q={query}`
-Returns search suggestions in Chrome/Firefox format.
-
-Query parameters:
-- `q` - Search query
-- `client` - Client type (`chrome-omni`, `firefox`)
-- `type` - Response format (`json`)
-- `useApiKeys` - Enable API features (`true`/`false`)
-
-### `GET /osd.xml` or `GET /opensearch.xml`
-Returns OpenSearch description for browser integration.
-
-### `GET /test`
-DNS lookup test endpoint.
-
-### `GET /example`
-Example endpoint returning plain text.
+- `X-Response-Time` - Request duration in ms
+- `X-Powered-By` - `Bun.serve`
+- `X-Bun-Version` - Bun version
+- `X-Worker-Id` - Worker ID (cluster mode)
+- `X-Worker-Pid` - Worker PID (cluster mode)
 
 ## Testing
 
@@ -128,50 +164,35 @@ bun test
 ```
 bun-server/
 ├── src/
-│   ├── main.ts          # Single-process server entry
-│   ├── cluster.ts       # Multi-process cluster manager
-│   ├── worker.ts        # Worker process for cluster mode
-│   ├── router.ts        # Request router
-│   ├── config.ts        # Configuration
-│   ├── routes/          # Route handlers
-│   │   ├── root.ts
-│   │   ├── search.ts
-│   │   ├── suggest.ts
-│   │   ├── example.ts
-│   │   └── test.ts
-│   ├── utils/           # Utility functions
-│   │   ├── cache.ts
-│   │   ├── crypto-assets.ts
-│   │   ├── redirect.ts
-│   │   └── suggestions.ts
-│   └── static/          # Static files
-│       └── icons/
-├── certs/               # TLS certificates (generated)
+│   ├── main.ts           # Bun.serve() single-process entry
+│   ├── cluster.ts        # Bun.spawn() cluster manager
+│   ├── worker-process.ts # Bun.serve() worker for cluster
+│   ├── router.ts         # Request routing
+│   ├── config.ts         # Configuration
+│   ├── routes/           # Route handlers
+│   │   ├── root.ts       # / and /osd.xml
+│   │   ├── search.ts     # /search
+│   │   ├── suggest.ts    # /suggest
+│   │   ├── example.ts    # /example
+│   │   └── test.ts       # /test
+│   └── utils/            # Utilities
+│       ├── cache.ts      # In-memory cache
+│       ├── crypto-assets.ts
+│       ├── redirect.ts
+│       └── suggestions.ts
+├── certs/                # TLS certificates
 ├── package.json
 ├── tsconfig.json
-├── bunfig.toml
-└── README.md
+└── bunfig.toml
 ```
 
-## Performance
+## Performance Notes
 
-Bun's HTTP server is significantly faster than Node.js alternatives:
-
-- **No external framework** - Uses Bun's native `Bun.serve()`
-- **reusePort** - Kernel-level load balancing across workers
-- **HTTP/3** - Lower latency with QUIC protocol
-- **Zero-copy responses** - Direct file serving with `Bun.file()`
-
-## Differences from Fastify Version
-
-| Feature | Fastify (Node.js) | Bun |
-|---------|-------------------|-----|
-| HTTP Server | Fastify | Bun.serve() |
-| HTTP Version | HTTP/1.1, HTTP/2 | HTTP/1.1, HTTP/2, HTTP/3 |
-| Multithreading | PM2/Cluster module | Native workers with reusePort |
-| OpenTelemetry | @autotelic/fastify-opentelemetry | Manual (add as needed) |
-| Static Files | @fastify/static | Bun.file() |
-| JSON Parsing | Built-in | Native (faster) |
+- **Bun.serve()** is significantly faster than Node.js HTTP servers
+- **reusePort** enables kernel-level load balancing (Linux 3.9+)
+- **Bun.spawn()** has lower overhead than Node.js child_process
+- **Bun.file()** provides zero-copy file serving
+- **Bun.nanoseconds()** for high-precision timing
 
 ## License
 
