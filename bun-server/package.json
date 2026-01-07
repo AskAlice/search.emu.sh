@@ -1,0 +1,20 @@
+{
+  "name": "bun-search-server",
+  "version": "1.0.0",
+  "description": "Search server re-implemented with Bun's built-in web server with HTTP/3 and multithreading",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "dev": "bun --watch run src/main.ts",
+    "cluster": "bun run src/cluster.ts",
+    "test": "bun test",
+    "generate-certs": "mkdir -p certs && openssl req -x509 -newkey rsa:4096 -keyout certs/key.pem -out certs/cert.pem -days 365 -nodes -subj '/CN=localhost'"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.2.3",
+    "maxmind": "^4.3.23"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

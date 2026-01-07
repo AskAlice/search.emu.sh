@@ -1,0 +1,6 @@
+[serve]
+# Enable HTTP/2 and HTTP/3 (QUIC) support when TLS is configured
+# Note: HTTP/3 requires TLS certificates
+
+[test]
+preload = ["./src/test-preload.ts"]
