@@ -32,6 +32,9 @@ const root: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   }
   fastify.get("/osd.xml", osd);
   fastify.get("/opensearch.xml", osd);
+  fastify.get("/", async (request, reply) => {
+    return { root: true };
+  });
 }
 
 export default root;
