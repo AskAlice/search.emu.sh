@@ -74,7 +74,7 @@
     "fastify-tsconfig": "^1.0.1",
     "protobufjs-cli": "^1.1.1",
     "tap": "^15.0.9",
-    "ts-node": "^10.0.0",
+    "ts-node": "^10.9.2",
     "typescript": "^4.2.4"
   }
 }
