@@ -1,11 +1,11 @@
 # Chrome Search Suggestions Hack
 
 I made this because I wanted to use DuckDuckGo's bangs but I also wanted to use google's rich omnibox suggestions (ie doing math in the url bar)
-I realized as I was doing this that I could easily extend upon google's search suggestion API with my own features, add my own custom bangs, and determine whether or not to use google or DuckDuckGo to search for certain topics (via OpenAI's API).
+I realized as I was doing this that I could easily extend upon google's search suggestion API with my own features, add my own custom bangs, and determine whether or not to use google or DuckDuckGo to search for certain topics (via an LLM, served through OpenRouter using the `moonshotai/kimi-k2.7-code` model).
 
 ## Search Features
 
-- Natural Language Processing via OpenAI to determine appropriate search engine
+- Natural Language Processing via OpenRouter (`moonshotai/kimi-k2.7-code`) to determine appropriate search engine
   - It will search with Google for most things. It will use DuckDuckGo for results that I find Google often has a bias towards a certain opinion, rather than providing useful information, for example when searching for medications or health conditions; rather than showing you the wikipedia links and fact sheets it provides you with pretty useless information for the lay-man.
 - Custom DuckDuckGo bangs (see [src/suggestions.ts](src/suggestions.ts))
 
@@ -82,7 +82,7 @@ VALUES (8192,
 ## Adding an implementation that is live and maintained by me
 
 Follow the instructions above, but use the below query.
-Note this won't use the keys for CryptoCompare or the OpenAI API keys. Please don't set the `useApiKeys` query param to use my API keys as I could end up getting billed for it personally.
+Note this won't use the keys for CryptoCompare or the OpenRouter API keys. Please don't set the `useApiKeys` query param to use my API keys as I could end up getting billed for it personally.
 
 ```sql
 INSERT INTO "keywords" ("id", "short_name", "keyword", "favicon_url", "url", "safe_for_autoreplace", "originating_url", "date_created", "usage_count", "input_encodings", "suggest_url", "prepopulate_id", "created_by_policy", "last_modified", "sync_guid", "alternate_urls", "image_url", "search_url_post_params", "suggest_url_post_params", "image_url_post_params", "new_tab_url", "last_visited", "created_from_play_api")
