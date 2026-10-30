@@ -1,5 +1,7 @@
 # Chrome Search Suggestions Hack
 
+[Live demo](https://search.emu.sh)
+
 I made this because I wanted to use DuckDuckGo's bangs but I also wanted to use google's rich omnibox suggestions (ie doing math in the url bar)
 I realized as I was doing this that I could easily extend upon google's search suggestion API with my own features, add my own custom bangs, and determine whether or not to use google or DuckDuckGo to search for certain topics (via an LLM, served through OpenRouter using the `moonshotai/kimi-k2.7-code` model).
 
@@ -11,16 +13,20 @@ I realized as I was doing this that I could easily extend upon google's search s
 
 ## Suggestion Features
 
-- get IP to location results by typing in an IP address
+- Discover custom and DuckDuckGo bangs as you type
+- Get IP to location results by typing in an IP address
   - <img src="https://emu.bz/cCu.png" >
-- Dig for DNS records by typing the domain then the type of records
+- Dig for DNS records and inspect domain RDAP, TLS, and mail configuration
   - <img src="https://emu.bz/OX1.gif" >
+- Inspect URLs, redirects, and tracking-free final destinations
+- Look up GitHub repositories, npm packages, CVEs, ISBNs, DOIs, flights, and tracking numbers
+- Convert units, currency, time zones, colors, timestamps, Base64, and URL-encoded text
 - Convert crypto prices to USD easily, and view the data on CoinMarketCap (via CryptoCompare API)
   - <img src="https://emu.bz/tAm.png" >
 
-## search.emu.sh Backend
+## search.emu.sh App
 
-This app is written in Fastify and acts as a:
+The React/TypeScript/UnoCSS frontend and Fastify API are deployed together on Vercel. The backend acts as a:
 
 - search suggestion provider for google chrome
 - search engine
@@ -58,13 +64,13 @@ VALUES (8192,
 'emu search ✨ (local)',
 'emuLocal',
 'https://emu.sh/favicon.ico',
-'http://localhost:8080/search?q={searchTerms}&useApiKeys=true',
+'http://localhost:8080/search?q={searchTerms}',
 0,
 'https://search.emu.sh/osd.xml',
 13265769204726312,
 4,
 'UTF-8',
-'http://localhost:8080/suggest?{google:searchFieldtrialParameter}client={google:suggestClient}&gs_ri={google:suggestRid}&xssi=t&q={searchTerms}&{google:inputType}{google:omniboxFocusType}{google:cursorPosition}{google:currentPageUrl}{google:pageClassification}{google:searchVersion}{google:sessionToken}{google:prefetchQuery}sugkey={google:suggestAPIKeyParameter}&useApiKeys=true',
+'http://localhost:8080/suggest?{google:searchFieldtrialParameter}client={google:suggestClient}&gs_ri={google:suggestRid}&xssi=t&q={searchTerms}&{google:inputType}{google:omniboxFocusType}{google:cursorPosition}{google:currentPageUrl}{google:pageClassification}{google:searchVersion}{google:sessionToken}{google:prefetchQuery}sugkey={google:suggestAPIKeyParameter}',
 0,
 0,
 13270754999736613,
@@ -81,8 +87,7 @@ VALUES (8192,
 
 ## Adding an implementation that is live and maintained by me
 
-Follow the instructions above, but use the below query.
-Note this won't use the keys for CryptoCompare or the OpenRouter API keys. Please don't set the `useApiKeys` query param to use my API keys as I could end up getting billed for it personally.
+Follow the instructions above, but use the below query. API-backed suggestions are always enabled.
 
 ```sql
 INSERT INTO "keywords" ("id", "short_name", "keyword", "favicon_url", "url", "safe_for_autoreplace", "originating_url", "date_created", "usage_count", "input_encodings", "suggest_url", "prepopulate_id", "created_by_policy", "last_modified", "sync_guid", "alternate_urls", "image_url", "search_url_post_params", "suggest_url_post_params", "image_url_post_params", "new_tab_url", "last_visited", "created_from_play_api")

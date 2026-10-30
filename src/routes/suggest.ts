@@ -11,10 +11,15 @@ import http from "http";
 import https from "https";
 import maxmind, { CityResponse } from "maxmind";
 import NodeCache from "node-cache";
+import { existsSync } from "fs";
+import { join } from "path";
 import { ActionInfo, ActionInfo_ActionType, CategoryInfo, CategoryInfo_Category, EntityInfo } from '../proto/entity_info_pb';
 import suggestions from "../suggestions";
 import cryptoAssets from "../suggestions/cryptoAssets.json";
+import { getRichSuggestions } from "../rich";
 const resolver = new doh.DohResolver("https://1.1.1.1/dns-query");
+const bundledGeoDb = join(__dirname, "../GeoLite2-City.mmdb");
+const geoDbPath = existsSync(bundledGeoDb) ? bundledGeoDb : "./src/GeoLite2-City.mmdb";
 const cache = new NodeCache();
 const httpAgent = new http.Agent({ keepAlive: true });
 const httpsAgent = new https.Agent({ keepAlive: true });
@@ -114,18 +119,28 @@ const fetchResult = async (signal, request, reply) => {
     entityId: "test",
   });
 
-  const useApiKeys = request.query?.useApiKeys === "true";
   const searchRegex = request.query?.q?.match(/(?<hasBang>\!?)(?<bang>(?<=\!)[\w\d-_]+)?([\s\+]+)?(?<search>.*)?/);
   const { search, bang: bangSlug } = searchRegex?.groups ?? {};
   const q = request.query?.q;
   const client = request.query?.client?.toLowerCase() ?? 'chrome-omni';
   reply.code(200);
   const searchingBang = typeof bangSlug === "string" && typeof search !== "undefined";
-  const googleQuery = searchingBang ? { ...request.query, q: search } : request.query;
-  delete googleQuery.useApiKeys;
+  const googleQuery = { ...request.query, q: searchingBang ? search : request.query.q };
+  delete googleQuery.type;
+  delete googleQuery.format;
+  googleQuery.client = client;
   const results = [];
   const addToResults = (suggestion, type, subtypes, detail, relevance) => 
     results.push({ suggestion, [suggestType]: type, [suggestSubtypes]: subtypes, [suggestDetail]: detail, [suggestRelevance]: relevance });
+
+  const richResults = await getRichSuggestions(q);
+  richResults.forEach((item, index) => addToResults(item.suggestion, /conversion|exchange rate/i.test(item.annotation) ? "CALCULATOR" : "ENTITY", ["emu"], {
+    a: item.annotation,
+    dc: "#DE5833",
+    i: item.image || "",
+    q: "",
+    t: item.title,
+  }, item.relevance ?? 7000 - index));
 
   console.log(`search ${search}, bangSlug ${bangSlug}, googleQuery ${JSON.stringify(googleQuery)}`);
   suggestions.forEach(s => {
@@ -150,9 +165,9 @@ const fetchResult = async (signal, request, reply) => {
   console.log(`assets: ${JSON.stringify(assets)}`);
 
   console.log(JSON.stringify(cryptoSearch));
-  console.log("process?.env?.CRYPTOCOMPARE_KEY, useApiKeys, assets.length > 0", process?.env?.CRYPTOCOMPARE_KEY, useApiKeys, assets.length > 0)
+  console.log("CryptoCompare configured, assets.length > 0", Boolean(process?.env?.CRYPTOCOMPARE_KEY), assets.length > 0)
   const cryptocompareKey = process?.env?.CRYPTOCOMPARE_KEY || false;
-  if (assets.length > 0 && useApiKeys && cryptocompareKey) {
+  if (assets.length > 0 && cryptocompareKey) {
     let opt: AxiosRequestConfig = {
       method: "GET",
       url: `https://min-api.cryptocompare.com/data/price?fsym=${assets[0].assetSymbol}&tsyms=USD&api_key=${cryptocompareKey}`,
@@ -201,7 +216,7 @@ const fetchResult = async (signal, request, reply) => {
   //   return sendReply(request, results, reply);
   // }
   try {
-    results.push(await Promise.any([
+    await Promise.any([
       // Dig and ip2location
       new Promise<Array<any>>(async (resolve, reject) => {
         let results = [];
@@ -226,7 +241,7 @@ const fetchResult = async (signal, request, reply) => {
               }
               let geolocation: any = {};
               if (await maxmind.validate(ip)) {
-                const lookup = await maxmind.open<CityResponse>("./src/GeoLite2-City.mmdb");
+                const lookup = await maxmind.open<CityResponse>(geoDbPath);
                 geolocation = await lookup.get(ip);
                 console.log(JSON.stringify(geolocation))
               }
@@ -249,7 +264,7 @@ const fetchResult = async (signal, request, reply) => {
           console.log(`results.length: ${results.length}`);
         } else {
           if (typeof search === "string" && maxmind.validate(search?.trim())) {
-            const lookup = await maxmind.open<CityResponse>("./src/GeoLite2-City.mmdb");
+            const lookup = await maxmind.open<CityResponse>(geoDbPath);
             const geolocation = await lookup.get(search.trim());
             console.log(`geolocation: ${JSON.stringify(geolocation)}`); // inferred type maxmind.CityResponse
             addToResults(search, "ENTITY", ["Country"], {
@@ -312,9 +327,9 @@ const fetchResult = async (signal, request, reply) => {
                     }, 6000 - results.length);
                   }
                 } else {
-                  if (b?.phrase === `!${bangSlug}`) {
-                    addToResults(`${request.query.q}`, "ENTITY", ["DuckDuckGo"], {
-                      a: `${bangs?.Redirect}`,
+                  if (b?.phrase?.startsWith(`!${bangSlug}`)) {
+                    addToResults(`${b.phrase}${search ? ` ${search}` : ""}`, "ENTITY", ["DuckDuckGo"], {
+                      a: b.snippet || bangs?.Redirect,
                       dc: "#DE5833",
                       i: b.image,
                       q: "alice=true",
@@ -331,7 +346,7 @@ const fetchResult = async (signal, request, reply) => {
         if (results.length > 0) resolve(results);
         else reject("no results");
       }),
-    ]));
+    ]);
     console.log(`results::: ${results}`);
   } catch (e) {
     console.error(e.message);
@@ -370,7 +385,7 @@ const fetchResult = async (signal, request, reply) => {
           let dataIndex = 3;
           if(client !== 'firefox'){
             dataIndex = 4;
-           data = res.data.replace(/.*/, "").substr(1);
+           data = typeof data === 'string' ? data.replace(/.*/, "").substr(1) : data;
           }
           console.log(data);
           function isJsonString(str) {
@@ -447,7 +462,7 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
           result = e?.message || e?.code || e;
           reject(result);
         }
-      }).catch((e) => {console.trace(e); console.log(`ERROR\n\n ${e?.message || e?.code || e}`)}),
+      }).catch((e) => {console.trace(e); console.log(`ERROR\n\n ${e?.message || e?.code || e}`); return sendReply(request, [], reply)}),
     ]);
     if ((<AbortEvent>result)?.type === "aborted") {
       span?.end();

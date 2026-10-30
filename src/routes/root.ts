@@ -25,9 +25,9 @@ const root: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   <Image height="16" width="16">https://${request.hostname}/favicon.ico</Image>
   <Url  type="text/html"
       method="GET"
-      template="https://${request.hostname}/search?client=${ /Firefox/i.test(request.headers["user-agent"]) ? 'firefox' : 'chrome'}&amp;useApiKeys=true&amp;q=%s" 
+      template="https://${request.hostname}/search?client=${ /Firefox/i.test(request.headers["user-agent"]) ? 'firefox' : 'chrome'}&amp;q=%s"
   />
-  <Url type="application/x-suggestions+json" method="GET" template="https://${request.hostname}/suggest?client=${ /Firefox/i.test(request.headers["user-agent"]) ? 'firefox' : 'chrome'}&amp;useApiKeys=true&amp;q=\{searchTerms\}" />
+  <Url type="application/x-suggestions+json" method="GET" template="https://${request.hostname}/suggest?client=${ /Firefox/i.test(request.headers["user-agent"]) ? 'firefox' : 'chrome'}&amp;q=\{searchTerms\}" />
 </OpenSearchDescription>`);
   }
   fastify.get("/osd.xml", osd);

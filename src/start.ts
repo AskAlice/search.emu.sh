@@ -1,5 +1,5 @@
 import Fastify from 'fastify';
-import app from './app';
+import { app } from './plugin';
 const {execSync} = require('child_process')
 const fastify = Fastify({
     http2: true,

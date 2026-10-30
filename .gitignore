@@ -71,3 +71,5 @@ node_modules/*
 .env
 serviceaccount.json
 cloudflare-token.txt
+.vercel
+.env*

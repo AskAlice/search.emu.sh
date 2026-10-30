@@ -6,5 +6,5 @@ import start from './start';
 start(otelSDK);
 
 
-    export { default as app, default } from './app';
+    export { app as default, app } from './plugin';
 
