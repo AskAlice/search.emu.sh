@@ -4,12 +4,12 @@ export default defineConfig({
   presets: [presetWind3()],
   theme: {
     colors: {
-      ink: '#1c1c1a',
-      paper: '#f4f1e8',
-      cream: '#fffcf4',
-      ember: '#de5833',
-      line: '#d6d0c2',
-      muted: '#68655d',
+      ink: '#202124',
+      paper: '#f1f3f4',
+      cream: '#ffffff',
+      ember: '#1a73e8',
+      line: '#e0e3e7',
+      muted: '#5f6368',
     },
     fontFamily: {
       display: ['Instrument Serif', 'Georgia', 'serif'],

@@ -6,7 +6,7 @@
       "use": "@vercel/node",
       "config": {
         "includeFiles": ["src/GeoLite2-City.mmdb", "src/suggestions/icons/**"],
-        "maxDuration": 30
+        "maxDuration": 60
       }
     },
     {
@@ -16,7 +16,7 @@
     }
   ],
   "routes": [
-    { "src": "/(search|suggest|osd.xml|opensearch.xml)", "dest": "/src/vercel.ts" },
+    { "src": "/(search|suggest|osd.xml|opensearch.xml|color/.*)", "dest": "/src/vercel.ts" },
     { "src": "/(assets|icons)/(.*)", "dest": "/frontend/$1/$2" },
     { "src": "/favicon.svg", "dest": "/frontend/favicon.svg" },
     { "handle": "filesystem" },

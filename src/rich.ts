@@ -8,6 +8,7 @@ export interface RichSuggestion {
   title: string;
   annotation: string;
   image?: string;
+  type?: string;
   relevance?: number;
 }
 
@@ -117,7 +118,9 @@ const discovery = (prefix: string): RichSuggestion[] => COMMANDS
 const validDomain = (domain: string) => /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(domain);
 
 async function rdap(domain: string): Promise<RichSuggestion[]> {
-  const url = `https://rdap.org/domain/${encodeURIComponent(domain)}`;
+  const url = domain.toLowerCase().endsWith(".sh")
+    ? `https://rdap.identitydigital.services/rdap/domain/${encodeURIComponent(domain)}`
+    : `https://rdap.org/domain/${encodeURIComponent(domain)}`;
   const { data } = await axios.get(url, { timeout: TIMEOUT });
   const registrarEntity = data.entities?.find((entity: any) => entity.roles?.includes("registrar"));
   const registrar = registrarEntity?.vcardArray?.[1]?.find((field: any[]) => field[0] === "fn")?.[3];
@@ -244,6 +247,35 @@ async function command(q: string): Promise<RichSuggestion[] | null> {
   return [redirect(`https://www.npmjs.com/package/${arg.split("/").map(encodeURIComponent).join("/")}`, data.name || arg, `${data.version || "latest"} · ${data.description || "npm package"}`)];
 }
 
+export async function getGoogleRichSuggestions(query: string, bangSlug?: string): Promise<RichSuggestion[]> {
+  if (!query.trim()) return [];
+  try {
+    const { data: raw } = await axios.get(`https://www.google.com/complete/search?client=gws-wiz&hl=en&q=${encodeURIComponent(query)}`, { timeout: TIMEOUT, responseType: "text" });
+    const text = String(raw);
+    const json = text.startsWith("window.google.ac.h(") ? text.slice(text.indexOf("(") + 1, text.lastIndexOf(")")) : text;
+    const payload = JSON.parse(json);
+    const items = Array.isArray(payload?.[0]) ? payload[0] : [];
+    return items.map((item: any, index: number) => {
+      const meta = item[3] || {};
+      const rawSuggestion = String(item[0]).replace(/<[^>]*>/g, "");
+      const suggestion = bangSlug ? rawSuggestion.replace(new RegExp(`(^)(${bangSlug}\\s)?`, "g"), `!${bangSlug} $1`) : rawSuggestion;
+      const annotation = meta.zi || "";
+      const isPerson = /actor|actress|musician|singer|rapper|politician|athlete|player|director|comedian|model|author/i.test(annotation);
+      const hasRichMetadata = Boolean(meta.zi || meta.zs);
+      return {
+        suggestion,
+        title: meta.zh || suggestion,
+        annotation,
+        image: meta.zs,
+        type: hasRichMetadata ? (isPerson ? "PERSON" : "ENTITY") : "QUERY",
+        relevance: hasRichMetadata ? 7500 - index : 1300 - index,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 export async function getRichSuggestions(query: string): Promise<RichSuggestion[]> {
   const q = query.trim();
   if (!q) return [];
@@ -308,7 +340,7 @@ export async function getRichSuggestions(query: string): Promise<RichSuggestion[
       return [answer(q, date.toUTCString(), date.toISOString())];
     }
     const color = hexToRgbHsl(q);
-    if (color) return [redirect(`https://coolors.co/${color.hex.slice(1)}`, `${color.hex} · rgb(${color.rgb.join(", ")})`, `hsl(${color.hsl[0]}, ${color.hsl[1]}%, ${color.hsl[2]}%)`)];
+    if (color) return [{ ...redirect(`https://coolors.co/${color.hex.slice(1)}`, `${color.hex} · rgb(${color.rgb.join(", ")})`, `hsl(${color.hsl[0]}, ${color.hsl[1]}%, ${color.hsl[2]}%)`), image: `/color/${color.hex.slice(1)}.svg` }];
     match = q.match(/^urlencode\s+(.+)$/i);
     if (match) return [answer(encodeURIComponent(match[1]), encodeURIComponent(match[1]), "URL-encoded text")];
     match = q.match(/^base64\s+(encode|decode)\s+(.+)$/i);

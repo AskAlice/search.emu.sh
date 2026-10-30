@@ -1,10 +1,6 @@
 import axios, { AxiosRequestConfig } from "axios";
 import { FastifyPluginAsync } from "fastify";
 // import zlib from "zlib";
-import { context, trace } from '@opentelemetry/api';
-
-import { protoBase64 } from "@bufbuild/protobuf";
-import { Span, Tracer } from "@opentelemetry/api";
 import doh from "dohjs";
 import { AbortEvent } from "fastify-racing";
 import http from "http";
@@ -16,7 +12,7 @@ import { join } from "path";
 import { ActionInfo, ActionInfo_ActionType, CategoryInfo, CategoryInfo_Category, EntityInfo } from '../proto/entity_info_pb';
 import suggestions from "../suggestions";
 import cryptoAssets from "../suggestions/cryptoAssets.json";
-import { getRichSuggestions } from "../rich";
+import { getGoogleRichSuggestions, getRichSuggestions } from "../rich";
 const resolver = new doh.DohResolver("https://1.1.1.1/dns-query");
 const bundledGeoDb = join(__dirname, "../GeoLite2-City.mmdb");
 const geoDbPath = existsSync(bundledGeoDb) ? bundledGeoDb : "./src/GeoLite2-City.mmdb";
@@ -102,47 +98,24 @@ const fetchResult = async (signal, request, reply) => {
   const verbatimrelevance = request?.query?.type === "json" ? "verbatimrelevance" : "google:verbatimrelevance";
   const headerTexts = request?.query?.type === "json" ? "headerTexts" : "google:headertexts";
   const clientData = request?.query?.type === "json" ? "clientData" : "google:clientdata";
-  const {
-    activeSpan,
-    tracer,
-    // context,
-    // extract,
-    // inject,
-  } = request.openTelemetry();
-  const t: Tracer = tracer;
-  const s: Span = activeSpan;
-  s?.updateName(`[${request.method}]: /suggest`);
-  s?.setAttribute("query", request.query.q);
-  const childSpan = tracer.startSpan(`${activeSpan.name} - child process`);
-
-  const Entity = new EntityInfo({
-    entityId: "test",
-  });
-
   const searchRegex = request.query?.q?.match(/(?<hasBang>\!?)(?<bang>(?<=\!)[\w\d-_]+)?([\s\+]+)?(?<search>.*)?/);
   const { search, bang: bangSlug } = searchRegex?.groups ?? {};
   const q = request.query?.q;
-  const client = request.query?.client?.toLowerCase() ?? 'chrome-omni';
-  reply.code(200);
   const searchingBang = typeof bangSlug === "string" && typeof search !== "undefined";
-  const googleQuery = { ...request.query, q: searchingBang ? search : request.query.q };
-  delete googleQuery.type;
-  delete googleQuery.format;
-  googleQuery.client = client;
   const results = [];
   const addToResults = (suggestion, type, subtypes, detail, relevance) => 
     results.push({ suggestion, [suggestType]: type, [suggestSubtypes]: subtypes, [suggestDetail]: detail, [suggestRelevance]: relevance });
 
   const richResults = await getRichSuggestions(q);
-  richResults.forEach((item, index) => addToResults(item.suggestion, /conversion|exchange rate/i.test(item.annotation) ? "CALCULATOR" : "ENTITY", ["emu"], {
+  richResults.forEach((item, index) => addToResults(item.suggestion, item.type || (/conversion|exchange rate/i.test(item.annotation) ? "CALCULATOR" : "ENTITY"), ["emu"], {
     a: item.annotation,
     dc: "#DE5833",
-    i: item.image || "",
+    i: item.image?.startsWith('/') ? `https://${request.hostname}${item.image}` : item.image || "",
     q: "",
     t: item.title,
   }, item.relevance ?? 7000 - index));
 
-  console.log(`search ${search}, bangSlug ${bangSlug}, googleQuery ${JSON.stringify(googleQuery)}`);
+  console.log(`search ${search}, bangSlug ${bangSlug}`);
   suggestions.forEach(s => {
     if (s.aliases.some(a => a.startsWith(bangSlug))) {
       addToResults(`!${s.name}${search ? ` ${search}` : ""}`, "ENTITY", ["Custom Bang", "BANG", s.url.replace(`~QUERYHERE~`, search)], {
@@ -323,7 +296,7 @@ const fetchResult = async (signal, request, reply) => {
                       i: b.image,
                       q: "bang",
                       zae: "/g/test",
-                      t: `${b.phrase} - ${typeof b.snippet !== "undefined" ? ` ${b.snippet}` : ""}`,
+                      t: `${b.phrase}${search ? ` ${search}` : ""} - ${typeof b.snippet !== "undefined" ? ` ${b.snippet}` : ""}`,
                     }, 6000 - results.length);
                   }
                 } else {
@@ -334,7 +307,7 @@ const fetchResult = async (signal, request, reply) => {
                       i: b.image,
                       q: "alice=true",
                       zae: "/g/test",
-                      t: `${b.phrase} - ${typeof b.snippet !== "undefined" ? ` ${b.snippet}` : ""}`,
+                      t: `${b.phrase}${search ? ` ${search}` : ""} - ${typeof b.snippet !== "undefined" ? ` ${b.snippet}` : ""}`,
                     }, 800 - results.length);
                   }
                 }
@@ -353,81 +326,14 @@ const fetchResult = async (signal, request, reply) => {
   }
   console.log("results length", results.length);
   if (results.length < 4) {
-    let re = await new Promise<Array<any>>((resolve, reject) => {
-      const options = {
-        Method: "GET",
-        url: "https://www.google.com/complete/search",
-        params: googleQuery,
-        headers: {
-          "x-client-data": "CKu1yQEIhbbJAQijtskBCKqdygEIm9/KAQiWocsBCPmKzQEIlo3NAQjtkc0BCIKTzQEIh5XNAQiXmM0BCNugzQEIgKbNAQjQp80BCLepzQEI5avNAQisr80BCNW0zQEI1LXNAQjqts0BCI+4zQEI27jNAQiXuc0BCIm6zQEIubvNAQiwvM0BCO+8zQEInr3NAQi4vc0BCMG9zQEI4r3NARikr80BGOmyzQE=",
-          "sec-fetch-site": "none",
-          "Pragma": "no-cache",
-          "Sec-Ch-Ua": `Not/A)Brand";v="99", "Google Chrome";v="115", "Chromium";v="115`,
-          "Sec-Ch-Ua-Arch": "x86",
-          "Sec-Ch-Ua-Bitness": "64",
-          "Sec-Ch-Ua-Platform": "Windows",
-          "Sec-Ch-Ua-Platform-Version": "15.0.0",
-          "Sec-Ch-Ua-Wow64": "?0",
-          "Sec-Ch-Ua-Mobile": "?0",
-          "Sec-Fetch-Mode": "navigate",
-          "sec-fetch-mode": "no-cors",
-          "sec-fetch-dest": "empty",
-          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-          "accept-encoding": "gzip, deflate, br",
-          "accept-language": "en-US,en;q=0.9",
-          "Cache-Control": "no-cache",
-       },
-      };
-      ax.request(options)
-        .then((res) => {
-          let data = res.data;
-          let dataIndex = 3;
-          if(client !== 'firefox'){
-            dataIndex = 4;
-           data = typeof data === 'string' ? data.replace(/.*/, "").substr(1) : data;
-          }
-          console.log(data);
-          function isJsonString(str) {
-            try {
-                JSON.parse(str);
-            } catch (e) {
-                return false;
-            }
-            return true;
-        }
-          const response = isJsonString(data) ? JSON.parse(data) : data;
-          console.log(data);
-          response[1].forEach((key, i) => {
-            console.log(`entityinfo:`,response[dataIndex]?.[`google:suggestdetail`]?.[`google:entityinfo`]);
-
-            let entityInfo = null;
-            if (typeof response[dataIndex]?.[`google:suggestdetail`]?.[i]?.[`google:entityinfo`] === 'string'){
-            entityInfo = EntityInfo.fromBinary(protoBase64.dec(response[dataIndex]?.[`google:suggestdetail`]?.[i]?.[`google:entityinfo`]));
-            }
-            
-            addToResults(
-              searchingBang ? key.replace(new RegExp(`(^)(${bangSlug}\\s)?`, "g"), `!${bangSlug} ${"$1"}`) : key, response[dataIndex][`google:suggestsubtypes`]?.[i] || response[dataIndex][`google:suggesttype`]?.[i]|| [], response[dataIndex]?.[`google:suggestsubtypes`]?.[i]|| [], 
-                entityInfo !== null
-                  ? { i: entityInfo?.imageUrl, a: searchingBang ? `${entityInfo?.annotation} via !${bangSlug}`: entityInfo?.annotation, t: entityInfo?.name, dc: entityInfo?.dominantColor, q: entityInfo?.suggestSearchParameters}
-                  : response[dataIndex][`google:suggestdetail`]?.[i]|| {},
-              response[dataIndex][`google:suggestrelevance`]?.[i]);
-          }
-          );
-
-          if (results?.length > 0) {
-            resolve(results);
-          } else {
-            console.log("rejecting google promise");
-            reject();
-          }
-        })
-        .catch((error) => {
-          console.trace(error);
-          reject(error);
-          return;
-        });
-    });
+    const googleResults = await getGoogleRichSuggestions(searchingBang ? search : q, searchingBang ? bangSlug : undefined);
+    googleResults.forEach((item) => addToResults(item.suggestion, item.type || "QUERY", [], {
+      a: item.annotation,
+      dc: "#DE5833",
+    i: item.image?.startsWith('/') ? `https://${request.hostname}${item.image}` : item.image || "",
+      q: "",
+      t: item.title,
+    }, item.relevance));
   }
   reply.code(200);
   console.log("sending reply")
@@ -435,19 +341,6 @@ const fetchResult = async (signal, request, reply) => {
 };
 const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   fastify.get("/suggest", async function (request: any, reply) {
-    const {
-      activeSpan,
-      tracer,
-      // context,
-      // extract,
-      // inject,
-    } = request.openTelemetry();
-    const span = tracer.startSpan(`${(activeSpan as any).name} - suggest`)
-    console.log(context, 'trace:', trace, request.url);
-    Object.entries(request?.query || {})?.forEach(([key, value]) => {
-      if(span?.setAttribute)
-        span?.setAttribute(key, value);
-    });
     console.log("request", request.query.q);
     const signal = request.race();
     const result: AbortEvent | unknown = await Promise.race([
@@ -465,12 +358,9 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
       }).catch((e) => {console.trace(e); console.log(`ERROR\n\n ${e?.message || e?.code || e}`); return sendReply(request, [], reply)}),
     ]);
     if ((<AbortEvent>result)?.type === "aborted") {
-      span?.end();
       return "aborted";
     }
-    else{
-      span?.end();
-      return result};
+    return result;
   });
 };
 

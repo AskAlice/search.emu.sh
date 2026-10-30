@@ -1,7 +1,7 @@
 :root {
   font-family: 'DM Sans', 'Avenir Next', 'Segoe UI', sans-serif;
-  color: #1c1c1a;
-  background: #f4f1e8;
+  color: #202124;
+  background: #f8fafc;
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -14,27 +14,10 @@ button, input { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 h1, h2, h3 { text-wrap: balance; }
 p, li { text-wrap: pretty; }
-::selection { color: #fffcf4; background: #de5833; }
-:focus-visible { outline: 2px solid #de5833; outline-offset: 4px; }
-
-.grid-paper {
-  background-image:
-    linear-gradient(to right, rgb(28 28 26 / 4%) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(28 28 26 / 4%) 1px, transparent 1px);
-  background-size: 32px 32px;
-}
-
-.search-shadow { box-shadow: 10px 10px 0 #1c1c1a; }
-.code-scroll { scrollbar-color: #de5833 #1c1c1a; }
-
-@media (prefers-reduced-motion: no-preference) {
-  .enter { animation: enter 500ms cubic-bezier(.23, 1, .32, 1) both; }
-  .enter-late { animation: enter 500ms 100ms cubic-bezier(.23, 1, .32, 1) both; }
-  @keyframes enter {
-    from { opacity: 0; transform: translateY(16px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-}
+::selection { color: #fff; background: #1a73e8; }
+:focus-visible { outline: 2px solid #1a73e8; outline-offset: 4px; }
+#search:focus-visible { outline: none; }
+.code-scroll { scrollbar-color: #1a73e8 #202124; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
