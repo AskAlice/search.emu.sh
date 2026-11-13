@@ -3,6 +3,7 @@ import fastifyStatic from '@fastify/static';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import fastifyRacing from 'fastify-racing';
 import { join } from 'path';
+import { existsSync } from 'fs';
 export type AppOptions = {} & Partial<AutoloadPluginOptions>;
 
 const app: FastifyPluginAsync<AppOptions> = async (fastify: FastifyInstance<any>, opts): Promise<void> => {
@@ -37,6 +38,15 @@ const app: FastifyPluginAsync<AppOptions> = async (fastify: FastifyInstance<any>
     await fastify.register(fastifyStatic, {
       root: join(__dirname, 'suggestions/icons'),
       prefix: '/icons/',
+    });
+  }
+  const webRoot = join(__dirname, '../dist/web');
+  if (!process.env.VERCEL && existsSync(webRoot)) {
+    await fastify.register(fastifyStatic, {
+      root: webRoot,
+      prefix: '/',
+      decorateReply: false,
+      index: false,
     });
   }
   fastify.addHook('onRequest', async (request, reply) => {

@@ -10,7 +10,7 @@
 
 html { scroll-behavior: smooth; }
 body { margin: 0; min-width: 320px; }
-button, input { font: inherit; }
+button, input { font: inherit; border: 0; appearance: none; }
 button, a { -webkit-tap-highlight-color: transparent; }
 h1, h2, h3 { text-wrap: balance; }
 p, li { text-wrap: pretty; }

@@ -9,7 +9,10 @@
     "newLine": "lf",
     "noFallthroughCasesInSwitch": true,
     "useDefineForClassFields": true,
-    "lib": ["esnext", "dom"],
+    "lib": [
+      "esnext",
+      "dom"
+    ],
     "module": "commonjs",
     "outDir": "dist",
     "rootDir": "src",
@@ -22,5 +25,10 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "src/web"
+  ]
 }

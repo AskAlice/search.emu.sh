@@ -1,3 +1,5 @@
+import { EntityInfo } from './proto/entity_info_pb';
+import { chromiumIcon, decodeSuggestTemplate } from './chromium/icons';
 import axios from "axios";
 import { randomUUID } from "crypto";
 import doh from "dohjs";
@@ -10,6 +12,8 @@ export interface RichSuggestion {
   image?: string;
   type?: string;
   relevance?: number;
+  suggestTemplate?: string;
+  source?: 'google';
 }
 
 const TIMEOUT = 5000;
@@ -18,6 +22,41 @@ const answer = (suggestion: string, title: string, annotation: string): RichSugg
 });
 const redirect = (url: string, title: string, annotation: string): RichSuggestion =>
   answer(`!redirect ${url}`, title, annotation);
+
+export function plainText(value: string): string {
+  const decoded = value.replace(/&nbsp;|&amp;|&lt;|&gt;|&quot;|&#39;|&apos;|&#(\d+);/g, (entity) => {
+    if (entity === '&nbsp;') return ' ';
+    if (entity === '&amp;') return '&';
+    if (entity === '&lt;') return '<';
+    if (entity === '&gt;') return '>';
+    if (entity === '&quot;') return '"';
+    if (entity === '&#39;' || entity === '&apos;') return "'";
+    return String.fromCharCode(Number(entity.slice(2, -1)));
+  });
+  return decoded.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+}
+
+export function featureIcon(item: RichSuggestion): string | undefined {
+  const template = decodeSuggestTemplate(item.suggestTemplate);
+  if (item.type === 'CALCULATOR') return chromiumIcon('CALCULATOR');
+  if (template?.image?.url) return template.image.url;
+  if (item.image) return item.image;
+  if (template?.typeIcon || item.source === 'google') return chromiumIcon(item.type, template);
+  if (item.type && !['ENTITY', 'PERSON'].includes(item.type)) return chromiumIcon(item.type);
+  const text = `${item.suggestion} ${item.title} ${item.annotation}`.toLowerCase();
+  const icons: Array<[RegExp, string]> = [
+    [/tls certificate/, 'SSL'], [/mail configuration|mailcheck/, 'MX'], [/rdap|whois/, 'RDAP'],
+    [/toolbox\.googleapps|dns/, 'DNS'], [/github/, 'GH'], [/npmjs|npm package|!npm/, 'NPM'],
+    [/developer\.mozilla|mdn/, 'MDN'], [/nvd\.nist|cve-/, 'CVE'], [/coolors|rgb\(/, 'COLOR'],
+    [/frankfurter|exchange rate/, 'FX'], [/unit conversion/, 'CALC'], [/timestamp|\bgmt\b|asia\/|america\/|utc/, 'TIME'],
+    [/isbn/, 'ISBN'], [/doi\.org|doi /, 'DOI'], [/arxiv/, 'ARX'], [/17track|shipment/, 'TRK'],
+    [/flightaware|flight /, 'FL'], [/base64/, 'B64'], [/url-encoded|urlencode/, 'TXT'], [/uuid/, 'ID'],
+    [/redirects|https?:\/\//, 'URL'],
+  ];
+  const icon = icons.find(([pattern]) => pattern.test(text))?.[1] || 'EMU';
+  if (icon === 'GH') return '/icons/github.png';
+  return `/icon/${icon}.svg?v=2`;
+}
 
 export function cleanUrl(raw: string): string {
   try {
@@ -101,7 +140,6 @@ export function hexToRgbHsl(input: string) {
 
 const COMMANDS = [
   ["!gh owner/repo", "Open and inspect a GitHub repository"],
-  ["!npm package", "Open and inspect an npm package"],
   ["!mdn query", "Search MDN Web Docs"],
   ["!track number", "Track a shipment with 17TRACK"],
   ["!flight code", "Look up a flight on FlightAware"],
@@ -117,11 +155,11 @@ const discovery = (prefix: string): RichSuggestion[] => COMMANDS
 
 const validDomain = (domain: string) => /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(domain);
 
-async function rdap(domain: string): Promise<RichSuggestion[]> {
+async function rdap(domain: string, signal?: AbortSignal): Promise<RichSuggestion[]> {
   const url = domain.toLowerCase().endsWith(".sh")
     ? `https://rdap.identitydigital.services/rdap/domain/${encodeURIComponent(domain)}`
     : `https://rdap.org/domain/${encodeURIComponent(domain)}`;
-  const { data } = await axios.get(url, { timeout: TIMEOUT });
+  const { data } = await axios.get(url, { timeout: TIMEOUT, signal });
   const registrarEntity = data.entities?.find((entity: any) => entity.roles?.includes("registrar"));
   const registrar = registrarEntity?.vcardArray?.[1]?.find((field: any[]) => field[0] === "fn")?.[3];
   const expiry = data.events?.find((event: any) => event.eventAction === "expiration")?.eventDate;
@@ -163,14 +201,14 @@ async function mailcheck(domain: string, selector?: string): Promise<RichSuggest
   return [answer(`mailcheck ${domain}${selector ? ` ${selector}` : ""}`, `${domain} mail configuration`, summary.join(" · "))];
 }
 
-async function inspectUrl(input: string): Promise<RichSuggestion[]> {
+async function inspectUrl(input: string, signal?: AbortSignal): Promise<RichSuggestion[]> {
   let current = new URL(input).toString();
   let status = 0;
   let redirects = 0;
   const started = Date.now();
   while (true) {
     const response = await axios.request({
-      method: "HEAD", url: current, maxRedirects: 0, validateStatus: () => true, timeout: TIMEOUT,
+      method: "HEAD", url: current, maxRedirects: 0, validateStatus: () => true, timeout: TIMEOUT, signal,
     });
     status = response.status;
     const location = response.headers.location;
@@ -218,7 +256,8 @@ function validIsbn(isbn: string): boolean {
   return /^\d{13}$/.test(isbn) && isbn.split("").reduce((sum, c, i) => sum + Number(c) * (i % 2 ? 3 : 1), 0) % 10 === 0;
 }
 
-async function command(q: string): Promise<RichSuggestion[] | null> {
+async function command(q: string, signal?: AbortSignal): Promise<RichSuggestion[] | null> {
+  if (/^!npm(?:\s|$)/i.test(q)) return null;
   const match = q.match(/^!?(gh|npm|mdn|track|flight|rdap|ssl|mailcheck)\b\s*(.*)$/i);
   if (!match) return null;
   const name = match[1].toLowerCase();
@@ -227,7 +266,7 @@ async function command(q: string): Promise<RichSuggestion[] | null> {
   if (name === "track") return [redirect(`https://17track.net/en/track?nums=${encodeURIComponent(arg)}`, `Track ${arg}`, "17TRACK shipment tracking")];
   if (name === "flight") return [redirect(`https://www.flightaware.com/live/flight/${encodeURIComponent(arg.toUpperCase())}`, `Flight ${arg.toUpperCase()}`, "FlightAware live flight status")];
   if (name === "mdn") return [redirect(`https://developer.mozilla.org/en-US/search?q=${encodeURIComponent(arg)}`, `MDN: ${arg}`, "Search MDN Web Docs")];
-  if (name === "rdap") return validDomain(arg) ? rdap(arg) : [];
+  if (name === "rdap") return validDomain(arg) ? rdap(arg, signal) : [];
   if (name === "ssl") {
     if (!validDomain(arg)) return [];
     const cert = await certificate(arg);
@@ -240,63 +279,73 @@ async function command(q: string): Promise<RichSuggestion[] | null> {
   }
   if (name === "gh") {
     if (!/^[^/\s]+\/[^/\s]+$/.test(arg)) return [];
-    const { data } = await axios.get(`https://api.github.com/repos/${arg.split("/").map(encodeURIComponent).join("/")}`, { timeout: TIMEOUT });
+    const { data } = await axios.get(`https://api.github.com/repos/${arg.split("/").map(encodeURIComponent).join("/")}`, { timeout: TIMEOUT, signal });
     return [redirect(`https://github.com/${arg}`, data.full_name || arg, `${data.description || "GitHub repository"} · Stars: ${data.stargazers_count ?? 0}`)];
   }
-  const { data } = await axios.get(`https://registry.npmjs.org/${encodeURIComponent(arg)}/latest`, { timeout: TIMEOUT });
+  const { data } = await axios.get(`https://registry.npmjs.org/${encodeURIComponent(arg)}/latest`, { timeout: TIMEOUT, signal });
   return [redirect(`https://www.npmjs.com/package/${arg.split("/").map(encodeURIComponent).join("/")}`, data.name || arg, `${data.version || "latest"} · ${data.description || "npm package"}`)];
 }
 
-export async function getGoogleRichSuggestions(query: string, bangSlug?: string): Promise<RichSuggestion[]> {
-  if (!query.trim()) return [];
-  try {
-    const { data: raw } = await axios.get(`https://www.google.com/complete/search?client=gws-wiz&hl=en&q=${encodeURIComponent(query)}`, { timeout: TIMEOUT, responseType: "text" });
-    const text = String(raw);
-    const json = text.startsWith("window.google.ac.h(") ? text.slice(text.indexOf("(") + 1, text.lastIndexOf(")")) : text;
-    const payload = JSON.parse(json);
-    const items = Array.isArray(payload?.[0]) ? payload[0] : [];
-    return items.map((item: any, index: number) => {
-      const meta = item[3] || {};
-      const rawSuggestion = String(item[0]).replace(/<[^>]*>/g, "");
-      const suggestion = bangSlug ? rawSuggestion.replace(new RegExp(`(^)(${bangSlug}\\s)?`, "g"), `!${bangSlug} $1`) : rawSuggestion;
-      const annotation = meta.zi || "";
-      const isPerson = /actor|actress|musician|singer|rapper|politician|athlete|player|director|comedian|model|author/i.test(annotation);
-      const hasRichMetadata = Boolean(meta.zi || meta.zs);
-      return {
-        suggestion,
-        title: meta.zh || suggestion,
-        annotation,
-        image: meta.zs,
-        type: hasRichMetadata ? (isPerson ? "PERSON" : "ENTITY") : "QUERY",
-        relevance: hasRichMetadata ? 7500 - index : 1300 - index,
-      };
-    });
-  } catch {
-    return [];
-  }
+export function parseGoogleSuggestions(raw: string, query: string, bangSlug?: string): RichSuggestion[] {
+  const text = String(raw).replace(/^\)\]\}'\s*/, '');
+  const json = text.startsWith("window.google.ac.h(") ? text.slice(text.indexOf("(") + 1, text.lastIndexOf(")")) : text;
+  const payload = JSON.parse(json);
+  const chrome = typeof payload?.[0] === 'string';
+  const items = chrome ? payload[1] : payload?.[0];
+  if (!Array.isArray(items)) return [];
+  return items.map((item: any, index: number) => {
+    const meta = chrome ? payload[4]?.['google:suggestdetail']?.[index] || {} : item[3] || {};
+    let entity: EntityInfo | undefined;
+    try { if (meta['google:entityinfo']) entity = EntityInfo.fromBinary(new Uint8Array(Buffer.from(meta['google:entityinfo'], 'base64'))); } catch { /* Ignore malformed optional metadata. */ }
+    const encoded = meta['google:suggesttemplate'];
+    const template = decodeSuggestTemplate(encoded);
+    const rawSuggestion = plainText(String(chrome ? item : item[0]));
+    const suggestion = bangSlug ? `!${bangSlug} ${rawSuggestion}` : rawSuggestion;
+    const annotation = plainText(template?.secondaryText?.text || entity?.annotation || meta.zi || meta.a || '');
+    const isPerson = /actor|actress|musician|singer|rapper|politician|athlete|player|director|comedian|model|author/i.test(annotation);
+    const explicitType = chrome ? payload[4]?.['google:suggesttype']?.[index] : undefined;
+    return {
+      suggestion,
+      title: plainText(template?.primaryText?.text || entity?.name || meta.zh || suggestion),
+      annotation,
+      image: template?.image?.url || entity?.imageUrl || meta.zs || meta.i,
+      suggestTemplate: template ? encoded : undefined,
+      source: 'google' as const,
+      type: explicitType || (entity || meta.zi || meta.zs ? (isPerson ? 'PERSON' : 'ENTITY') : 'QUERY'),
+      relevance: chrome ? payload[4]?.['google:suggestrelevance']?.[index] || 1300 - index : meta.zi || meta.zs ? 7500 - index : 1300 - index,
+    };
+  });
 }
 
-export async function getRichSuggestions(query: string): Promise<RichSuggestion[]> {
+export async function getGoogleRichSuggestions(query: string, bangSlug?: string, signal?: AbortSignal): Promise<RichSuggestion[]> {
+  if (!query.trim()) return [];
+  try {
+    const { data } = await axios.get(`https://www.google.com/complete/search?client=chrome-omni&hl=en&q=${encodeURIComponent(query)}`, { timeout: 750, signal, responseType: 'text' });
+    return parseGoogleSuggestions(String(data), query, bangSlug);
+  } catch { return []; }
+}
+
+export async function getRichSuggestions(query: string, signal?: AbortSignal): Promise<RichSuggestion[]> {
   const q = query.trim();
   if (!q) return [];
   try {
     if (/^![a-z]*$/i.test(q)) return discovery(q.slice(1).toLowerCase());
-    const commandResult = await command(q);
+    const commandResult = await command(q, signal);
     if (commandResult) return commandResult;
 
     let match = q.match(/^(?:whois|rdap)\s+(\S+)$/i);
-    if (match) return validDomain(match[1]) ? rdap(match[1]) : [];
+    if (match) return validDomain(match[1]) ? await rdap(match[1], signal) : [];
     const urlCommand = q.match(/^url\s+(\S+)$/i);
     if (urlCommand || /^https?:\/\/\S+$/i.test(q)) {
       const input = urlCommand ? urlCommand[1] : q;
       const withScheme = /^https?:\/\//i.test(input) ? input : `https://${input}`;
       const parsed = new URL(withScheme);
-      return /^https?:$/.test(parsed.protocol) ? inspectUrl(parsed.toString()) : [];
+      return /^https?:$/.test(parsed.protocol) ? await inspectUrl(parsed.toString(), signal) : [];
     }
     match = q.match(/^(CVE-\d{4}-\d{4,})$/i);
     if (match) {
       const id = match[1].toUpperCase();
-      const { data } = await axios.get(`https://api.osv.dev/v1/vulns/${id}`, { timeout: TIMEOUT });
+      const { data } = await axios.get(`https://api.osv.dev/v1/vulns/${id}`, { timeout: TIMEOUT, signal });
       const details = String(data.details || data.summary || "OSV vulnerability record").replace(/\s+/g, " ").slice(0, 300);
       return [redirect(`https://nvd.nist.gov/vuln/detail/${id}`, `${id}: ${data.summary || "Vulnerability"}`, details)];
     }
@@ -308,7 +357,7 @@ export async function getRichSuggestions(query: string): Promise<RichSuggestion[
       if (/^[a-z]{3}$/i.test(match[2]) && /^[a-z]{3}$/i.test(match[3])) {
         const from = match[2].toUpperCase();
         const to = match[3].toUpperCase();
-        const { data } = await axios.get(`https://api.frankfurter.app/latest?amount=${amount}&from=${from}&to=${to}`, { timeout: TIMEOUT });
+        const { data } = await axios.get(`https://api.frankfurter.app/latest?amount=${amount}&from=${from}&to=${to}`, { timeout: TIMEOUT, signal });
         if (typeof data.rates?.[to] !== "number") return [];
         return [answer(q, `${amount} ${from} = ${data.rates[to]} ${to}`, `Frankfurter exchange rate · ${data.date || "latest"}`)];
       }

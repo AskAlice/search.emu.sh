@@ -2,3 +2,8 @@
 node_modules/
 dist/
 cloudflare-token.txt
+node_modules
+**/node_modules
+dist
+frontend
+.git

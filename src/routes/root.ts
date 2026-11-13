@@ -1,3 +1,6 @@
+import { existsSync } from 'fs';
+import { readFile } from 'fs/promises';
+import { join } from 'path';
 import { FastifyPluginAsync } from "fastify";
 
 const root: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
@@ -33,6 +36,8 @@ const root: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   fastify.get("/osd.xml", osd);
   fastify.get("/opensearch.xml", osd);
   fastify.get("/", async (request, reply) => {
+    const index = join(__dirname, '../../dist/web/index.html');
+    if (!process.env.VERCEL && existsSync(index)) return reply.type('text/html').send(await readFile(index));
     return { root: true };
   });
 }

@@ -5,21 +5,33 @@
       "src": "src/vercel.ts",
       "use": "@vercel/node",
       "config": {
-        "includeFiles": ["src/GeoLite2-City.mmdb", "src/suggestions/icons/**"],
+        "includeFiles": [
+          "src/GeoLite2-City.mmdb",
+          "src/suggestions/icons/**",
+          "src/chromium/icons/**"
+        ],
         "maxDuration": 60
       }
     },
     {
-      "src": "frontend/package.json",
+      "src": "package.json",
       "use": "@vercel/static-build",
-      "config": { "distDir": "dist" }
+      "config": {
+        "distDir": "dist/web"
+      }
     }
   ],
   "routes": [
-    { "src": "/(search|suggest|osd.xml|opensearch.xml|color/.*)", "dest": "/src/vercel.ts" },
-    { "src": "/(assets|icons)/(.*)", "dest": "/frontend/$1/$2" },
-    { "src": "/favicon.svg", "dest": "/frontend/favicon.svg" },
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/frontend/index.html" }
+    {
+      "src": "/(bangs|search|suggest|osd.xml|opensearch.xml|color/.*|icon/.*)",
+      "dest": "/src/vercel.ts"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
   ]
 }
