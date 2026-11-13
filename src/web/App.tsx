@@ -77,7 +77,8 @@ const typesOf = (item: Suggestion) => (Array.isArray(item.suggestType) ? item.su
 
 function toRow(item: Suggestion, index: number): Row {
   const types = typesOf(item), detail = item.suggestDetail
-  const [tag, tone] = redirectTarget(item) || types.includes('CALCULATOR') ? ['Answer', 'text-gold']
+  // Crypto prices open via `!cmc`, but they are answers, not bangs the user typed.
+  const [tag, tone] = redirectTarget(item) || types.includes('CALCULATOR') || item.suggestSubtypes?.includes('crypto') ? ['Answer', 'text-gold']
     : item.suggestion.startsWith('!') ? ['Bang', 'text-ember']
     : types.includes('PERSON') || types.includes('ENTITY') ? ['Knowledge', 'text-mint']
     : types.includes('NAVIGATION') ? ['Site', 'text-blue']
