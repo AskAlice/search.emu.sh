@@ -92,14 +92,16 @@ function SearchIcon({ className }: { className: string }) {
   return <svg aria-hidden="true" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" /></svg>
 }
 
-function Picture({ detail, size = 'h-18 w-18 rounded-lg', icon = 'h-7 w-7' }: { detail: Suggestion['suggestDetail']; size?: string; icon?: string }) {
+function Picture({ detail, size = 'h-18 w-18 rounded-lg', icon = 'h-7 w-7', inline = false }: { detail: Suggestion['suggestDetail']; size?: string; icon?: string; inline?: boolean }) {
   const [failed, setFailed] = useState(false)
   const image = detail?.i?.startsWith('//') ? `https:${detail.i}` : detail?.i
-  const tinted = (detail?.entityInfo || detail?.template) && detail?.dc && /^#[0-9a-f]{6}$/i.test(detail.dc)
+  const tinted = !inline && (detail?.entityInfo || detail?.template) && detail?.dc && /^#[0-9a-f]{6}$/i.test(detail.dc)
+  // Inline (list) icons sit on the row's own background; glyph SVGs get padding so they read at icon size.
+  const glyph = inline && /\/(icon|color)\//.test(image ?? '')
   return (
-    <span style={tinted ? { backgroundColor: detail?.dc } : undefined} className={`grid ${size} shrink-0 place-items-center overflow-hidden bg-raise text-muted`}>
+    <span style={tinted ? { backgroundColor: detail?.dc } : undefined} className={`grid ${size} shrink-0 place-items-center overflow-hidden text-muted ${inline ? '' : 'bg-raise'}`}>
       {image && !failed
-        ? <img className="h-full w-full object-cover" src={image} alt="" loading="lazy" onError={() => setFailed(true)} />
+        ? <img className={`h-full w-full ${glyph ? 'object-contain p-1.5' : 'object-cover'}`} src={image} alt="" loading="lazy" onError={() => setFailed(true)} />
         : <SearchIcon className={icon} />}
     </span>
   )
@@ -303,7 +305,7 @@ export default function App() {
                 <div key={row.key} id={`suggestion-${index}`} role="option" aria-selected={index === activeIndex} onClick={() => run(row)} onMouseMove={() => { if (index !== activeIndex) setActiveIndex(index) }}
                   className={`grid cursor-pointer grid-cols-[64px_32px_minmax(0,1fr)] items-center gap-2.5 rounded-1.5 border-l-2 px-2.5 py-2 md:grid-cols-[84px_32px_minmax(0,1fr)] ${index === activeIndex ? 'border-ember bg-raise' : 'border-transparent'}`}>
                   <span className={`truncate text-xs ${row.tone}`}>{row.tag}</span>
-                  <Picture key={row.suggestion?.suggestDetail?.i ?? ''} detail={row.suggestion?.suggestDetail} size="h-8 w-8 rounded-md" icon="h-4 w-4" />
+                  <Picture key={row.suggestion?.suggestDetail?.i ?? ''} detail={row.suggestion?.suggestDetail} size="h-8 w-8 rounded-md" icon="h-4 w-4" inline />
                   <span className="min-w-0">
                     <span className="block truncate">{row.title}</span>
                     {row.sub && <span className="block truncate text-xs text-muted">{row.sub}</span>}
