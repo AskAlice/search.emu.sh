@@ -10,7 +10,7 @@ t.test('Google options are allowlisted and cursor position is relative to the fo
   t.equal(url.searchParams.get('hl'), 'fr-CA'); t.equal(url.searchParams.get('gl'), 'CA');
   t.equal(url.searchParams.get('cp'), '6'); t.equal(url.searchParams.get('client'), 'chrome-omni');
   t.equal(url.searchParams.get('q'), 'iphone');
-  t.same([...url.searchParams.keys()].sort(), ['client', 'cp', 'gl', 'hl', 'q']);
+  t.same([...url.searchParams.keys()].sort(), ['client', 'cp', 'gl', 'gs_ri', 'hl', 'q']); t.equal(url.searchParams.get('gs_ri'), 'chrome-ext-ansg', 'Chrome extension marker unlocks entity metadata');
   const invalid = new URL(googleSuggestUrl('test', { hl: ['en'], gl: '../US', cp: '-1' }));
   t.equal(invalid.searchParams.get('hl'), 'en'); t.notOk(invalid.searchParams.has('gl')); t.notOk(invalid.searchParams.has('cp'));
 });

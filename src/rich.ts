@@ -331,9 +331,14 @@ export function parseGoogleSuggestions(raw: string, query: string, bangSlug?: st
   });
 }
 
+// Google returns entity metadata only to Chrome-like clients; axios's default User-Agent gets plain queries.
+const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36';
+
 export function googleSuggestUrl(query: string, options: Record<string, unknown> = {}, cursorOffset = 0): string {
   const url = new URL('https://www.google.com/complete/search');
   url.searchParams.set('client', 'chrome-omni');
+  // Chrome sends this; without it Google omits entity rows, images and annotations ("Troy — 2004 film").
+  url.searchParams.set('gs_ri', 'chrome-ext-ansg');
   url.searchParams.set('hl', typeof options.hl === 'string' && /^[a-z]{2,3}(?:[-_][a-z0-9]{2,8})*$/i.test(options.hl) ? options.hl : 'en');
   if (typeof options.gl === 'string' && /^[a-z]{2}$/i.test(options.gl)) url.searchParams.set('gl', options.gl);
   if (typeof options.cp === 'string' && /^\d{1,6}$/.test(options.cp)) url.searchParams.set('cp', String(Math.min(query.length, Math.max(0, Number(options.cp) - cursorOffset))));
@@ -344,7 +349,7 @@ export function googleSuggestUrl(query: string, options: Record<string, unknown>
 export async function getGoogleRichSuggestions(query: string, bangSlug?: string, signal?: AbortSignal, options: Record<string, unknown> = {}, cursorOffset = 0): Promise<RichSuggestion[]> {
   if (!query.trim()) return [];
   try {
-    const data = await cachedGet(googleSuggestUrl(query, options, cursorOffset), 300, { timeout: 750, signal, responseType: 'text' });
+    const data = await cachedGet(googleSuggestUrl(query, options, cursorOffset), 300, { timeout: 750, signal, responseType: 'text', headers: { 'User-Agent': CHROME_UA } });
     return parseGoogleSuggestions(String(data), query, bangSlug);
   } catch { return []; }
 }

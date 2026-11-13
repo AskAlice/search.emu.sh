@@ -44,7 +44,11 @@ const sendReply = (request, results, reply) => {
   };
   results.sort((a, b) => (b[suggestRelevance] || 0) - (a[suggestRelevance] || 0));
   const seen = new Set<string>();
-  results = results.filter(item => { if (seen.has(item.suggestion)) return false; seen.add(item.suggestion); return true; });
+  // Google sends an entity row ("Brad Pitt — American actor") with the same text as the plain query; keep both, like Chrome.
+  results = results.filter(item => {
+    const key = `${item.suggestion}\u0000${item[suggestDetail]?.entityInfo ? 'entity' : ''}`;
+    if (seen.has(key)) return false; seen.add(key); return true;
+  });
   if (request?.query?.type === "json" || request?.query?.format === "json") return results;
   const searchFormat: Array<any> = ["", [], [], []];
   searchFormat[0] = request.query.q;
