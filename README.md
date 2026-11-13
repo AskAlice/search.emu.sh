@@ -35,11 +35,11 @@ If you simply want to use this without setting it up locally, refer below to the
 
 ## Running locally
 
-Refer to [.env.example](./.env.example) to set up api keys.
+Copy [.env.example](./.env.example) to `.env.local` and fill in the keys you need. All are optional:
 
-You will need to make an app on cloud.google.com if you want to use the Natural Language API to classify text.
-
-You will need to make an API key for CryptoCompare if you want to get crypto prices.
+- `CRYPTOCOMPARE_KEY` for crypto prices
+- `TMDB_API_KEY` or `TMDB_ACCESS_TOKEN` for movie/TV suggestions
+- `BRAVE_SEARCH_API_KEY` for Brave rich suggestions
 
 ```
 npm ci
@@ -49,7 +49,7 @@ npm ci
 npm run dev
 ```
 
-The UI dev server runs at `http://localhost:5173` and forwards API requests to Fastify on port 3006. Both use dependencies from the root package. For a production build served by one Node process:
+`npm run dev` starts three processes: the Fastify API on port 3006 (restarts on change), `tsc -w`, and the Vite UI at `http://localhost:5173`. Open the Vite URL; it proxies `/suggest`, `/search`, `/bangs`, `/icon`, and the OpenSearch XML to the API. Set `VITE_API_BASE_URL` to point the UI at a different API. For a production build served by one Node process:
 
 ```sh
 npm run build
