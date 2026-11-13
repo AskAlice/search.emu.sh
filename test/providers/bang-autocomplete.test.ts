@@ -1,6 +1,7 @@
 import t from 'tap';
 import Fastify from 'fastify';
 import axios from 'axios';
+import { httpCache } from '../../src/providers/http';
 import suggest from '../../src/routes/suggest';
 import search from '../../src/routes/search';
 
@@ -19,7 +20,7 @@ t.test('a query after a bang completes the query rather than the bang name', asy
   const app = Fastify(); await app.register(suggest); await app.register(search);
   t.teardown(async () => { axios.defaults.adapter = adapter; await app.close(); });
   for (const bang of ['a', 'orders', 'o']) {
-    calls.length = 0;
+    calls.length = 0; httpCache.flushAll();
     const response = await app.inject('/suggest?type=json&q=' + encodeURIComponent(`!${bang} iphone`));
     const items = response.json();
     t.ok(items.some(item => item.suggestion === `!${bang} iphone case`), `Google completes !${bang}`);
@@ -40,7 +41,7 @@ t.test('a query after a bang completes the query rather than the bang name', asy
   const spaced = await app.inject('/suggest?type=json&q=' + encodeURIComponent('!o '));
   t.ok(spaced.json().every(item => item.suggestion === '!o'), 'first space exits bang-name discovery');
   t.notOk(calls.some(url => url.includes('duckduckgo')), 'no discovery after a trailing space');
-  axios.defaults.adapter = async () => { throw new Error('upstream unavailable'); };
+  axios.defaults.adapter = async () => { throw new Error('upstream unavailable'); }; httpCache.flushAll();
   const unavailable = await app.inject('/suggest?type=json&q=' + encodeURIComponent('!o iphone'));
   t.same(unavailable.json().map(item => item.suggestion), ['!o iphone'], 'exact bang remains usable when Google fails');
   const redirect = await app.inject('/search?q=' + encodeURIComponent('!o iphone case'));

@@ -1,5 +1,6 @@
 import t from 'tap';
 import axios from 'axios';
+import { httpCache } from '../../src/providers/http';
 import doh from 'dohjs';
 import tls from 'tls';
 import { EventEmitter } from 'events';
@@ -54,7 +55,10 @@ t.test('HTTP providers use fixtures and fail independently', async t => {
   const google = await getGoogleRichSuggestions('hello', 'a');
   t.equal(google[0].suggestion, '!a hello world');
   t.ok(seen.some(url => url.includes('client=chrome-omni')));
-  axios.defaults.adapter = async () => { throw new Error('provider down'); };
+  const fetched = seen.length;
+  await getRichSuggestions('npm react'); await getGoogleRichSuggestions('hello', 'a');
+  t.equal(seen.length, fetched, 'repeat lookups are served from the HTTP cache');
+  axios.defaults.adapter = async () => { throw new Error('provider down'); }; httpCache.flushAll();
   for (const query of ['gh alice/project', 'npm react', 'whois example.com', 'CVE-2021-44228', '100 usd eur', 'https://example.com/start']) t.same(await getRichSuggestions(query), [], `${query} failure`);
   t.same(await getGoogleRichSuggestions('hello'), []);
 });

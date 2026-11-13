@@ -17,6 +17,9 @@ import { getGoogleRichSuggestions, getRichSuggestions, featureIcon, plainText } 
 const resolver = new doh.DohResolver("https://1.1.1.1/dns-query");
 const bundledGeoDb = join(__dirname, "../GeoLite2-City.mmdb");
 const geoDbPath = existsSync(bundledGeoDb) ? bundledGeoDb : "./src/GeoLite2-City.mmdb";
+// Opening the 70 MB GeoLite DB costs far more than a lookup; open it once per process.
+let geoReader: ReturnType<typeof maxmind.open<CityResponse>> | undefined;
+const openGeoDb = () => (geoReader ??= maxmind.open<CityResponse>(geoDbPath).catch(error => { geoReader = undefined; throw error; }));
 const cache = new NodeCache();
 const httpAgent = new http.Agent({ keepAlive: true });
 const httpsAgent = new https.Agent({ keepAlive: true });
@@ -236,7 +239,7 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
               }
               let geolocation: any = {};
               if (await maxmind.validate(ip)) {
-                const lookup = await maxmind.open<CityResponse>(geoDbPath);
+                const lookup = await openGeoDb();
                 geolocation = await lookup.get(ip);
               }
               addToResults(`!redirect https://toolbox.googleapps.com/apps/dig/?cache=${i}#${dns.type}/${dns.domain}`, "ENTITY", [512, 433], {
@@ -254,7 +257,7 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
           );
         } else {
           if (typeof search === "string" && maxmind.validate(search?.trim())) {
-            const lookup = await maxmind.open<CityResponse>(geoDbPath);
+            const lookup = await openGeoDb();
             const geolocation = await lookup.get(search.trim());
             addToResults(search, "ENTITY", ["Country"], {
               a: `${geolocation?.city?.names?.en ? `${geolocation?.city?.names?.en}, ` : ""}${
@@ -300,11 +303,11 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
               }
               // console.log(bangs);
 
-              bangss.forEach((b) => {
+              bangss.forEach((b, i) => {
                 if (!searchingBang) {
                   if (b?.image?.length > 0) {
-                    // b.image = b.image.substring(0, b.image.indexOf('?'));
-                    b.image = b.image += "?cache=" + (Math.random() + 1).toString(36).substring(7);
+                    // Unique per row so Chrome keeps each icon, but stable so the browser can cache it.
+                    b.image += `${b.image.includes("?") ? "&" : "?"}cache=${i}`;
                     addToResults(`${b.phrase} ${search ? `${search}` : ""}`, "ENTITY", ["DuckDuckGo"], {
                       a: b.snippet,
                       dc: "#DE5833",

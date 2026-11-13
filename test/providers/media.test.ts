@@ -3,6 +3,7 @@ import suggest from '../../src/routes/suggest';
 import search from '../../src/routes/search';
 import t from 'tap';
 import axios from 'axios';
+import { httpCache } from '../../src/providers/http';
 import { getRichSuggestions } from '../../src/rich';
 
 t.test('movie/TV search uses individual IDs, years and configurable destinations', async t => {
@@ -47,9 +48,9 @@ t.test('movie/TV search uses individual IDs, years and configurable destinations
     t.match(redirect.body, /https:\/\/www\.themoviedb\.org\/movie\/438631/, 'search opens the matching media result');
   } finally { await app.close(); }
   const fixture = axios.defaults.adapter as (config: any) => Promise<any>;
-  axios.defaults.adapter = async config => { const response = await fixture(config); response.data.results[0].title = "Director's cut"; return response; };
+  axios.defaults.adapter = async config => { const response = await fixture(config); response.data.results[0].title = "Director's cut"; return response; }; httpCache.flushAll();
   process.env.MOVIE_URL_TEMPLATE = 'https://radarr.example/{title}';
   t.equal((await getRichSuggestions('movie directors cut'))[0].suggestion, '!redirect https://radarr.example/Director%27s%20cut', 'apostrophes are encoded in path substitutions');
-  axios.defaults.adapter = async () => { throw new Error('TMDB unavailable'); };
+  axios.defaults.adapter = async () => { throw new Error('TMDB unavailable'); }; httpCache.flushAll();
   t.same(await getRichSuggestions('movie dune'), []);
 });

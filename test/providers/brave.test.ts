@@ -1,5 +1,6 @@
 import t from 'tap';
 import axios from 'axios';
+import { httpCache } from '../../src/providers/http';
 import Fastify from 'fastify';
 import { braveSuggestions } from '../../src/providers/brave';
 import suggest from '../../src/routes/suggest';
@@ -32,7 +33,7 @@ t.test('Brave rich results, bang completions, and failure fallback', async t => 
   t.equal(entity.name,'Albert Einstein');t.equal(entity.annotation,'Physicist');t.equal(entity.imageUrl,'https://example.com/einstein.jpg');
   const before=calls;t.same(await braveSuggestions('x'.repeat(401)),[]);t.equal(calls,before);
   const originalFixture=axios.defaults.adapter as (config:any)=>Promise<any>;
-  axios.defaults.adapter=async config=>{if(new URL(config.url!).hostname === 'api.search.brave.com')throw new Error('Brave plan unavailable');return originalFixture(config)};
+  axios.defaults.adapter=async config=>{if(new URL(config.url!).hostname === 'api.search.brave.com')throw new Error('Brave plan unavailable');return originalFixture(config)};httpCache.flushAll();
   t.same(await braveSuggestions('albert'),[]);
   t.ok((await app.inject('/suggest?type=json&q=albert')).json().some(item=>item.suggestion==='google only'),'Google works when Brave fails');
 });

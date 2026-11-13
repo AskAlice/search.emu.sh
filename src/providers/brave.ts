@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { cachedGet } from './http';
 import type { RichSuggestion } from '../rich';
 
 export async function braveSuggestions(query: string, bangSlug?: string, signal?: AbortSignal, options: Record<string, unknown> = {}): Promise<RichSuggestion[]> {
@@ -9,7 +9,7 @@ export async function braveSuggestions(query: string, bangSlug?: string, signal?
     url.searchParams.set('q', query); url.searchParams.set('rich', 'true'); url.searchParams.set('count', '8');
     if (typeof options.gl === 'string' && /^[a-z]{2}$/i.test(options.gl)) url.searchParams.set('country', options.gl.toUpperCase());
     if (typeof options.hl === 'string' && /^[a-z]{2,3}(?:-[a-z]{2,4})?$/i.test(options.hl)) url.searchParams.set('lang', options.hl.toLowerCase());
-    const { data } = await axios.get(url.href, { headers: { Accept: 'application/json', 'X-Subscription-Token': key }, timeout: 750, signal });
+    const data = await cachedGet(url.href, 300, { headers: { Accept: 'application/json', 'X-Subscription-Token': key }, timeout: 750, signal });
     if (!Array.isArray(data?.results)) return [];
     return data.results.filter(item => typeof item?.query === 'string' && item.query.trim()).slice(0, 8).map((item, index) => {
       let image: string | undefined;

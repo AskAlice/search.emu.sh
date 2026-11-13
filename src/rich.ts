@@ -1,4 +1,5 @@
 import { mediaSuggestions } from './providers/media';
+import { cachedGet } from './providers/http';
 import { EntityInfo } from './proto/entity_info_pb';
 import { chromiumIcon, decodeSuggestTemplate } from './chromium/icons';
 import axios from "axios";
@@ -166,7 +167,7 @@ async function rdap(domain: string, signal?: AbortSignal): Promise<RichSuggestio
   const url = domain.toLowerCase().endsWith(".sh")
     ? `https://rdap.identitydigital.services/rdap/domain/${encodeURIComponent(domain)}`
     : `https://rdap.org/domain/${encodeURIComponent(domain)}`;
-  const { data } = await axios.get(url, { timeout: TIMEOUT, signal });
+  const data = await cachedGet(url, 3600, { timeout: TIMEOUT, signal });
   const registrarEntity = data.entities?.find((entity: any) => entity.roles?.includes("registrar"));
   const registrar = registrarEntity?.vcardArray?.[1]?.find((field: any[]) => field[0] === "fn")?.[3];
   const expiry = data.events?.find((event: any) => event.eventAction === "expiration")?.eventDate;
@@ -286,10 +287,10 @@ async function command(q: string, signal?: AbortSignal): Promise<RichSuggestion[
   }
   if (name === "gh") {
     if (!/^[^/\s]+\/[^/\s]+$/.test(arg)) return [];
-    const { data } = await axios.get(`https://api.github.com/repos/${arg.split("/").map(encodeURIComponent).join("/")}`, { timeout: TIMEOUT, signal });
+    const data = await cachedGet(`https://api.github.com/repos/${arg.split("/").map(encodeURIComponent).join("/")}`, 600, { timeout: TIMEOUT, signal });
     return [redirect(`https://github.com/${arg}`, data.full_name || arg, `${data.description || "GitHub repository"} · Stars: ${data.stargazers_count ?? 0}`)];
   }
-  const { data } = await axios.get(`https://registry.npmjs.org/${encodeURIComponent(arg)}/latest`, { timeout: TIMEOUT, signal });
+  const data = await cachedGet(`https://registry.npmjs.org/${encodeURIComponent(arg)}/latest`, 600, { timeout: TIMEOUT, signal });
   return [redirect(`https://www.npmjs.com/package/${arg.split("/").map(encodeURIComponent).join("/")}`, data.name || arg, `${data.version || "latest"} · ${data.description || "npm package"}`)];
 }
 
@@ -343,7 +344,7 @@ export function googleSuggestUrl(query: string, options: Record<string, unknown>
 export async function getGoogleRichSuggestions(query: string, bangSlug?: string, signal?: AbortSignal, options: Record<string, unknown> = {}, cursorOffset = 0): Promise<RichSuggestion[]> {
   if (!query.trim()) return [];
   try {
-    const { data } = await axios.get(googleSuggestUrl(query, options, cursorOffset), { timeout: 750, signal, responseType: 'text' });
+    const data = await cachedGet(googleSuggestUrl(query, options, cursorOffset), 300, { timeout: 750, signal, responseType: 'text' });
     return parseGoogleSuggestions(String(data), query, bangSlug);
   } catch { return []; }
 }
@@ -370,7 +371,7 @@ export async function getRichSuggestions(query: string, signal?: AbortSignal): P
     match = q.match(/^(CVE-\d{4}-\d{4,})$/i);
     if (match) {
       const id = match[1].toUpperCase();
-      const { data } = await axios.get(`https://api.osv.dev/v1/vulns/${id}`, { timeout: TIMEOUT, signal });
+      const data = await cachedGet(`https://api.osv.dev/v1/vulns/${id}`, 3600, { timeout: TIMEOUT, signal });
       const details = String(data.details || data.summary || "OSV vulnerability record").replace(/\s+/g, " ").slice(0, 300);
       return [redirect(`https://nvd.nist.gov/vuln/detail/${id}`, `${id}: ${data.summary || "Vulnerability"}`, details)];
     }
@@ -382,7 +383,7 @@ export async function getRichSuggestions(query: string, signal?: AbortSignal): P
       if (/^[a-z]{3}$/i.test(match[2]) && /^[a-z]{3}$/i.test(match[3])) {
         const from = match[2].toUpperCase();
         const to = match[3].toUpperCase();
-        const { data } = await axios.get(`https://api.frankfurter.app/latest?amount=${amount}&from=${from}&to=${to}`, { timeout: TIMEOUT, signal });
+        const data = await cachedGet(`https://api.frankfurter.app/latest?amount=${amount}&from=${from}&to=${to}`, 3600, { timeout: TIMEOUT, signal });
         if (typeof data.rates?.[to] !== "number") return [];
         return [answer(q, `${amount} ${from} = ${data.rates[to]} ${to}`, `Frankfurter exchange rate · ${data.date || "latest"}`)];
       }

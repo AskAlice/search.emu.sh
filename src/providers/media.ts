@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { cachedGet } from './http';
 import type { RichSuggestion } from '../rich';
 
 export async function mediaSuggestions(kind: 'movie' | 'tv', query: string, signal?: AbortSignal): Promise<RichSuggestion[]> {
@@ -9,7 +9,7 @@ export async function mediaSuggestions(kind: 'movie' | 'tv', query: string, sign
     const url = new URL(`https://api.themoviedb.org/3/search/${kind}`);
     url.searchParams.set('query', query);
     if (!token) url.searchParams.set('api_key', key!);
-    const { data } = await axios.get(url.href, {
+    const data = await cachedGet(url.href, 3600, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       timeout: 750, signal,
     });

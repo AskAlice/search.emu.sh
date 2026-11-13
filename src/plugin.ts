@@ -52,6 +52,10 @@ const app: FastifyPluginAsync<AppOptions> = async (fastify: FastifyInstance<any>
       prefix: '/',
       decorateReply: false,
       index: false,
+      // Vite content-hashes everything under /assets, so those files never change at a given URL.
+      setHeaders: (res, path) => {
+        if (path.startsWith(join(webRoot, 'assets'))) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      },
     });
   }
   fastify.addHook('onRequest', async (request, reply) => {
