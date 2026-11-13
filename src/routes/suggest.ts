@@ -19,6 +19,8 @@ const bundledGeoDb = join(__dirname, "../GeoLite2-City.mmdb");
 const geoDbPath = existsSync(bundledGeoDb) ? bundledGeoDb : "./src/GeoLite2-City.mmdb";
 // Opening the 70 MB GeoLite DB costs far more than a lookup; open it once per process.
 let geoReader: ReturnType<typeof maxmind.open<CityResponse>> | undefined;
+// Crisp SVG flag for an ISO 3166-1 alpha-2 country code.
+const flagUrl = (code?: string) => `https://flagcdn.com/${/^[a-z]{2}$/i.test(code || '') ? code!.toLowerCase() : 'un'}.svg`;
 const openGeoDb = () => (geoReader ??= maxmind.open<CityResponse>(geoDbPath).catch(error => { geoReader = undefined; throw error; }));
 const cache = new NodeCache();
 const httpAgent = new http.Agent({ keepAlive: true });
@@ -257,7 +259,7 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
                   dc: "#DE5833",
                   i:
                     typeof geolocation?.country?.iso_code !== "undefined"
-                      ? `https://cdn.ip2location.com/assets/img/flags/${geolocation?.country?.iso_code?.toLowerCase()}.png?cache=${i}`
+                      ? `${flagUrl(geolocation?.country?.iso_code)}?cache=${i}`
                       : `https://${request.hostname}/icon/DNS.svg`,
                   q: "",
                   t: `${ans.name} ${ans.ttl} ${ans.class} ${ans.type} ${ans.data?.exchange || ans.data}`,
@@ -274,7 +276,7 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
                 geolocation?.subdivisions?.length ? `${geolocation?.subdivisions[0]?.iso_code}, ` : ""
               } ${geolocation?.country?.names?.en} ${(geolocation as any)?.location?.latitude} ${(geolocation as any)?.location?.longitude}`,
               dc: "#DE5833",
-              i: `https://cdn.ip2location.com/assets/img/flags/${geolocation?.country?.iso_code?.toLowerCase()}.png`,
+              i: geolocation?.country?.iso_code ? flagUrl(geolocation.country.iso_code) : `https://${request.hostname}/icon/DNS.svg`,
               q: "test",
               t: `${search}`,
             }, 9999);

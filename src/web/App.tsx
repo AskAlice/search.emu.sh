@@ -98,7 +98,7 @@ function Picture({ detail, size = 'h-18 w-18 rounded-lg', icon = 'h-7 w-7', inli
   const image = detail?.i?.startsWith('//') ? `https:${detail.i}` : detail?.i
   const tinted = !inline && (detail?.entityInfo || detail?.template) && detail?.dc && /^#[0-9a-f]{6}$/i.test(detail.dc)
   // Inline (list) icons sit on the row's own background; glyph SVGs get padding so they read at icon size.
-  const glyph = inline && /\/(icon|color)\//.test(image ?? '')
+  const glyph = /\/(icon|color)\/|flagcdn\.com/.test(image ?? '')
   return (
     <span style={tinted ? { backgroundColor: detail?.dc } : undefined} className={`grid ${size} shrink-0 place-items-center overflow-hidden text-muted ${inline ? '' : 'bg-raise'}`}>
       {image && !failed
