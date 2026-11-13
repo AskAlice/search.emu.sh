@@ -1,3 +1,5 @@
+import { braveSuggestions } from '../providers/brave';
+import { parseDnsQuery } from '../providers/dns';
 import axios, { AxiosRequestConfig } from "axios";
 import { FastifyPluginAsync } from "fastify";
 // import zlib from "zlib";
@@ -38,6 +40,8 @@ const sendReply = (request, results, reply) => {
     [`${suggestRelevance}`]: [],
   };
   results.sort((a, b) => (b[suggestRelevance] || 0) - (a[suggestRelevance] || 0));
+  const seen = new Set<string>();
+  results = results.filter(item => { if (seen.has(item.suggestion)) return false; seen.add(item.suggestion); return true; });
   if (request?.query?.type === "json" || request?.query?.format === "json") return results;
   const searchFormat: Array<any> = ["", [], [], []];
   searchFormat[0] = request.query.q;
@@ -48,7 +52,7 @@ const sendReply = (request, results, reply) => {
     ...acc, {...val, 
       [`${suggestDetail}`]: {
         ...(val[`${suggestDetail}`].template ? { "google:suggesttemplate": val[`${suggestDetail}`].template } : {}),
-        "google:entityinfo": Buffer.from((new EntityInfo({
+        "google:entityinfo": val[`${suggestDetail}`].entityInfo || Buffer.from((new EntityInfo({
           name: val[`${suggestDetail}`].t,
           imageUrl: ["ENTITY", "PERSON"].includes(val[`${suggestType}`]) ? val[`${suggestDetail}`].i : undefined,
           dominantColor: val[`${suggestDetail}`].dc,
@@ -109,15 +113,29 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
     results.push({ suggestion: plainText(String(suggestion)), [suggestType]: type, [suggestSubtypes]: subtypes, [suggestDetail]: cleanDetail, [suggestRelevance]: relevance });
   };
 
-  const googleTask = getGoogleRichSuggestions(bangQuery ? search || "" : searchingBang ? search : q, bangQuery ? bangSlug : undefined, signal).then(googleResults => {
-    googleResults.forEach((item) => addToResults(item.suggestion, item.type || "QUERY", [], {
+  const googleQuery = bangQuery ? search || "" : searchingBang ? search : q;
+  const googleTask = getGoogleRichSuggestions(googleQuery, bangQuery ? bangSlug : undefined, signal, request.query, bangQuery ? q.length - googleQuery.length : 0).then(googleResults => {
+    googleResults.forEach((item) => addToResults(item.suggestion, item.type || "QUERY", item.subtypes || [], {
       a: item.annotation,
-      dc: "#DE5833",
+      dc: item.dominantColor || "",
       i: featureIcon(item)?.startsWith('/') ? `https://${request.hostname}${featureIcon(item)}` : featureIcon(item) || "",
       template: item.suggestTemplate,
-      q: "",
+      entityInfo: item.entityInfo,
+      category: item.categories,
+      website: item.website,
+      q: item.searchParameters || "",
       t: item.title,
     }, item.relevance));
+  }).catch(() => {});
+
+  const braveTask = braveSuggestions(googleQuery, bangQuery ? bangSlug : undefined, signal, request.query).then(items => {
+    for (const item of items) {
+      const icon = featureIcon(item);
+      addToResults(item.suggestion, item.type || 'QUERY', [], {
+        a: item.annotation, t: item.title, dc: '', q: '',
+        i: icon?.startsWith('/') ? `https://${request.hostname}${icon}` : icon || '',
+      }, item.relevance);
+    }
   }).catch(() => {});
 
   const richTask = getRichSuggestions(q, signal).then(richResults => {
@@ -209,12 +227,10 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
     await Promise.allSettled([
       // Dig and ip2location
       (async () => {
-        const isDig = q.match(
-          /(dig\s)?(?<domain>(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9])\s(?<DNS>A|AAAA|ALIAS|CNAME|MX|NS|PTR|SOA|SRV|TXT)(\s@)?(?<ns>(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9])?/i
-        );
-        if (isDig?.length) {
+        const dns = parseDnsQuery(q);
+        if (dns) {
           console.log("MATCHED");
-          const response = await resolver.query(isDig.groups.domain, isDig.groups.DNS);
+          const response = await resolver.query(dns.domain, dns.type, "POST", null, 750);
 
           await Promise.all(
             response.answers.map(async (ans, i) => {
@@ -235,7 +251,7 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
                 console.log(JSON.stringify(geolocation))
               }
               console.log("hmm");
-              addToResults(`!redirect https://toolbox.googleapps.com/apps/dig/?cache=${i}#${isDig.groups.DNS}/${isDig.groups.domain}`, "ENTITY", [512, 433], {
+              addToResults(`!redirect https://toolbox.googleapps.com/apps/dig/?cache=${i}#${dns.type}/${dns.domain}`, "ENTITY", [512, 433], {
                   a: `${ans.name} ${ans.ttl} ${ans.class} ${ans.type} ${ans.data?.exchange || ans.data}`,
                   dc: "#DE5833",
                   i:
@@ -244,7 +260,7 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
                       : `https://${request.hostname}/icon/DNS.svg`,
                   q: "",
                   t: `${ans.name} ${ans.ttl} ${ans.class} ${ans.type} ${ans.data?.exchange || ans.data}`,
-                }, 512 * (response.answers.length - i));
+                }, 6500 - i);
               console.log(`${results.length} ans: ${JSON.stringify(ans)}\n\nresults:\n${JSON.stringify(results)}`);
               if (results.length) return results;
             })
@@ -337,7 +353,7 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
       })(),
     ]);
   })();
-  await Promise.allSettled([richTask, googleTask, cryptoTask, legacyTask]);
+  await Promise.allSettled([richTask, googleTask, braveTask, cryptoTask, legacyTask]);
 };
 const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   fastify.get("/suggest", async function (request: any, reply) {

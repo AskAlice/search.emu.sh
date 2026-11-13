@@ -1,3 +1,4 @@
+import { mediaSuggestions } from './providers/media';
 import { EntityInfo } from './proto/entity_info_pb';
 import { chromiumIcon, decodeSuggestTemplate } from './chromium/icons';
 import axios from "axios";
@@ -13,7 +14,13 @@ export interface RichSuggestion {
   type?: string;
   relevance?: number;
   suggestTemplate?: string;
-  source?: 'google';
+  source?: 'google' | 'brave';
+  entityInfo?: string;
+  subtypes?: Array<number | string>;
+  dominantColor?: string;
+  searchParameters?: string;
+  categories?: number[];
+  website?: string;
 }
 
 const TIMEOUT = 5000;
@@ -310,6 +317,12 @@ export function parseGoogleSuggestions(raw: string, query: string, bangSlug?: st
       annotation,
       image: template?.image?.url || entity?.imageUrl || meta.zs || meta.i,
       suggestTemplate: template ? encoded : undefined,
+      entityInfo: entity ? meta['google:entityinfo'] : undefined,
+      subtypes: chrome && Array.isArray(payload[4]?.['google:suggestsubtypes']?.[index]) ? payload[4]['google:suggestsubtypes'][index] : [],
+      dominantColor: template?.image?.dominantColor || entity?.dominantColor,
+      searchParameters: entity?.suggestSearchParameters,
+      categories: entity?.category,
+      website: entity?.websiteUri,
       source: 'google' as const,
       type: explicitType || (entity || meta.zi || meta.zs ? (isPerson ? 'PERSON' : 'ENTITY') : 'QUERY'),
       relevance: chrome ? payload[4]?.['google:suggestrelevance']?.[index] || 1300 - index : meta.zi || meta.zs ? 7500 - index : 1300 - index,
@@ -317,10 +330,20 @@ export function parseGoogleSuggestions(raw: string, query: string, bangSlug?: st
   });
 }
 
-export async function getGoogleRichSuggestions(query: string, bangSlug?: string, signal?: AbortSignal): Promise<RichSuggestion[]> {
+export function googleSuggestUrl(query: string, options: Record<string, unknown> = {}, cursorOffset = 0): string {
+  const url = new URL('https://www.google.com/complete/search');
+  url.searchParams.set('client', 'chrome-omni');
+  url.searchParams.set('hl', typeof options.hl === 'string' && /^[a-z]{2,3}(?:[-_][a-z0-9]{2,8})*$/i.test(options.hl) ? options.hl : 'en');
+  if (typeof options.gl === 'string' && /^[a-z]{2}$/i.test(options.gl)) url.searchParams.set('gl', options.gl);
+  if (typeof options.cp === 'string' && /^\d{1,6}$/.test(options.cp)) url.searchParams.set('cp', String(Math.min(query.length, Math.max(0, Number(options.cp) - cursorOffset))));
+  url.searchParams.set('q', query);
+  return url.href;
+}
+
+export async function getGoogleRichSuggestions(query: string, bangSlug?: string, signal?: AbortSignal, options: Record<string, unknown> = {}, cursorOffset = 0): Promise<RichSuggestion[]> {
   if (!query.trim()) return [];
   try {
-    const { data } = await axios.get(`https://www.google.com/complete/search?client=chrome-omni&hl=en&q=${encodeURIComponent(query)}`, { timeout: 750, signal, responseType: 'text' });
+    const { data } = await axios.get(googleSuggestUrl(query, options, cursorOffset), { timeout: 750, signal, responseType: 'text' });
     return parseGoogleSuggestions(String(data), query, bangSlug);
   } catch { return []; }
 }
@@ -330,6 +353,8 @@ export async function getRichSuggestions(query: string, signal?: AbortSignal): P
   if (!q) return [];
   try {
     if (/^![a-z]*$/i.test(q)) return discovery(q.slice(1).toLowerCase());
+    const media = q.match(/^(movie|tv)\s+(.+)$/i);
+    if (media) return await mediaSuggestions(media[1].toLowerCase() as 'movie' | 'tv', media[2], signal);
     const commandResult = await command(q, signal);
     if (commandResult) return commandResult;
 

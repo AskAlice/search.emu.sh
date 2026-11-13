@@ -73,3 +73,7 @@ serviceaccount.json
 cloudflare-token.txt
 .vercel
 .env*
+
+# Python installer bytecode
+__pycache__/
+*.py[cod]

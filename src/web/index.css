@@ -1,24 +1,28 @@
 :root {
-  font-family: 'DM Sans', 'Avenir Next', 'Segoe UI', sans-serif;
-  color: #202124;
-  background: #f8fafc;
+  color-scheme: dark;
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 
-html { scroll-behavior: smooth; }
-body { margin: 0; min-width: 320px; }
-button, input { font: inherit; border: 0; appearance: none; }
-button, a { -webkit-tap-highlight-color: transparent; }
+/* UnoCSS border utilities set width and colour only, so the style has to be solid everywhere. */
+*, *::before, *::after { box-sizing: border-box; border-width: 0; border-style: solid; border-color: currentColor; }
+[hidden] { display: none !important; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+body { margin: 0; min-width: 320px; background: #0f1b1b; }
+h1, h2, h3, p { margin: 0; }
 h1, h2, h3 { text-wrap: balance; }
 p, li { text-wrap: pretty; }
-::selection { color: #fff; background: #1a73e8; }
-:focus-visible { outline: 2px solid #1a73e8; outline-offset: 4px; }
-#search:focus-visible { outline: none; }
-.code-scroll { scrollbar-color: #1a73e8 #202124; }
+button, input, select { font: inherit; color: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+::selection { color: #0f1b1b; background: #86e3c8; }
+:where(:focus-visible) { outline: 2px solid #86e3c8; outline-offset: 2px; border-radius: 3px; }
+.scroll-dark { scrollbar-color: #2b4644 transparent; }
+.flash { animation: flash .9s; }
+@keyframes flash { from { color: #e8c268; } }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
+  .flash { animation: none; }
 }
