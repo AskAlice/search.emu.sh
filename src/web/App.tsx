@@ -1,20 +1,21 @@
+import BangSettings from './BangSettings'
 import { useEffect, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'https://search-emu-sh.vercel.app').replace(/\/$/, '')
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || window.location.origin).replace(/\/$/, '')
 
 const INSTALL_SQL = `INSERT INTO "keywords" ("id", "short_name", "keyword", "favicon_url", "url", "safe_for_autoreplace", "originating_url", "date_created", "usage_count", "input_encodings", "suggest_url", "prepopulate_id", "created_by_policy", "last_modified", "sync_guid", "alternate_urls", "image_url", "search_url_post_params", "suggest_url_post_params", "image_url_post_params", "new_tab_url", "last_visited", "created_from_play_api")
 VALUES (8195,
 'emu search',
 'emu',
 'https://emu.sh/favicon.ico',
-'${API_BASE}/search?q={searchTerms}',
+'https://search.emu.sh/search?q={searchTerms}',
 0,
-'${API_BASE}/osd.xml',
+'https://search.emu.sh/osd.xml',
 13265769204726412,
 4,
 'UTF-8',
-'${API_BASE}/suggest?client=chrome-omni&q={searchTerms}',
+'https://search.emu.sh/suggest?client=chrome-omni&q={searchTerms}',
 0,
 0,
 13270754999736713,
@@ -84,10 +85,6 @@ function SearchIcon() {
   return <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>
 }
 
-function CalculatorIcon() {
-  return <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="5" y="2.5" width="14" height="19" rx="2" /><path d="M8 6.5h8M8 11h1m3 0h1m3 0h1M8 15h1m3 0h1m3 0h1M8 18.5h1m3 0h1m3 0h1" /></svg>
-}
-
 function SuggestionRow({ item, active, onSelect, id }: { item: Suggestion; active: boolean; onSelect: () => void; id: string }) {
   const [imageFailed, setImageFailed] = useState(false)
   const detail = item.suggestDetail
@@ -103,7 +100,7 @@ function SuggestionRow({ item, active, onSelect, id }: { item: Suggestion; activ
       <span className={`${isPerson ? 'h-16 w-16 rounded-2xl' : 'h-9 w-9 rounded-lg'} flex shrink-0 items-center justify-center overflow-hidden bg-paper text-muted`}>
         {image && !imageFailed
           ? <img className="h-full w-full object-cover" src={image} alt="" loading="lazy" onError={() => setImageFailed(true)} />
-          : isCalculator ? <CalculatorIcon /> : <SearchIcon />}
+          : <SearchIcon />}
       </span>
       <span className="min-w-0 flex-1">
         <span className={`block truncate text-ink ${isPerson ? 'text-base font-semibold' : 'text-sm'}`}>{label}</span>
@@ -115,6 +112,7 @@ function SuggestionRow({ item, active, onSelect, id }: { item: Suggestion; activ
 }
 
 export default function App() {
+  const [bangRevision, setBangRevision] = useState(0)
   const [query, setQuery] = useState('')
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [loading, setLoading] = useState(false)
@@ -124,8 +122,8 @@ export default function App() {
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    const value = query.trim()
-    if (!value) {
+    const value = query.trimStart()
+    if (!value.trim()) {
       setSuggestions([])
       setError('')
       setLoading(false)
@@ -138,7 +136,7 @@ export default function App() {
       setError('')
       setIsOpen(true)
       try {
-        const response = await fetch(`${API_BASE}/suggest?type=json&q=${encodeURIComponent(value)}`, { signal: controller.signal })
+        const response = await fetch(`${API_BASE}/suggest?type=json&q=${encodeURIComponent(value)}`, { signal: controller.signal, credentials: 'include' })
         if (!response.ok) throw new Error(`Suggestion request failed: ${response.status}`)
         const data: unknown = await response.json()
         if (!Array.isArray(data)) throw new Error('Unexpected suggestion response')
@@ -151,13 +149,13 @@ export default function App() {
       } finally {
         if (!controller.signal.aborted) setLoading(false)
       }
-    }, 250)
+    }, 75)
 
     return () => {
       window.clearTimeout(timer)
       controller.abort()
     }
-  }, [query])
+  }, [query, bangRevision])
 
   const runSearch = (value: string) => {
     const term = value.trim()
@@ -207,7 +205,7 @@ export default function App() {
     <div className="min-h-screen bg-[#f8fafc] text-ink">
       <a href="#main" className="absolute left-4 top-4 z-50 -translate-y-24 bg-ink px-4 py-3 text-sm text-white focus:translate-y-0">Skip to content</a>
       <header className="flex h-20 items-center justify-end px-6">
-        <nav className="flex items-center gap-6 text-sm" aria-label="Main navigation"><a className="py-3 hover:text-ember" href="#install">Install</a><a className="py-3 hover:text-ember" href="https://github.com/AskAlice/search.emu.sh" target="_blank" rel="noreferrer">GitHub</a></nav>
+        <nav className="flex items-center gap-6 text-sm" aria-label="Main navigation"><a className="py-3 hover:text-ember" href="#bangs">Custom bangs</a><a className="py-3 hover:text-ember" href="#install">Install</a><a className="py-3 hover:text-ember" href="https://github.com/AskAlice/search.emu.sh" target="_blank" rel="noreferrer">GitHub</a></nav>
       </header>
 
       <main id="main">
@@ -269,6 +267,8 @@ export default function App() {
             </div>
           </div>
         </section>
+
+        <BangSettings api={API_BASE} onSave={() => setBangRevision(current => current + 1)} />
 
         <section id="install" className="scroll-mt-8 border-t border-line bg-paper">
           <div className="mx-auto max-w-4xl px-5 py-16 sm:px-8 sm:py-20">

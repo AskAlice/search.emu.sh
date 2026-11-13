@@ -1,0 +1,35 @@
+import t from 'tap';
+import Fastify from 'fastify';
+import bangs from '../../src/routes/bangs';
+import search from '../../src/routes/search';
+import { getBangs, validateBangs, bangDestination } from '../../src/suggestions';
+
+t.test('persistent bang settings and redirects', async t => {
+  const app = Fastify();
+  await app.register(bangs);
+  await app.register(search);
+  t.teardown(() => app.close());
+  const defaults = (await app.inject('/bangs')).json();
+  t.ok(defaults.bangs.find(b => b.name === 'orders'));
+  t.equal((await app.inject({ method: 'POST', url: '/bangs', payload: defaults.defaults })).statusCode, 200, 'defaults fit the cookie');
+  const config = [{ name: 'orders', aliases: ['o'], url: 'https://example.com/?q=~QUERYHERE~', description: 'My orders' }];
+  const saved = await app.inject({ method: 'POST', url: '/bangs', payload: config });
+  t.equal(saved.statusCode, 200);
+  const cookie = String(saved.headers['set-cookie']);
+  t.match(cookie, /Max-Age=31536000(?:;|$)/, 'cookie persists for one year');
+  t.match(cookie, /HttpOnly; SameSite=Lax/);
+  const headers = { cookie: cookie.split(';')[0] };
+  t.equal((await app.inject({ url: '/bangs', headers })).json().bangs[0].url, config[0].url);
+  const redirect = await app.inject({ url: '/search?q=' + encodeURIComponent('!o shoes & socks'), headers });
+  t.equal(redirect.statusCode, 302);
+  t.equal(redirect.headers.location, 'https://example.com/?q=shoes%20%26%20socks');
+  t.equal((await app.inject('/bangs')).json().bangs[0].name, defaults.bangs[0].name, 'another browser retains defaults');
+  t.same(getBangs('emu_bangs=%5B%5D'), [], 'empty configuration disables custom bangs');
+  t.same(getBangs('emu_bangs=broken'), defaults.defaults);
+  t.throws(() => validateBangs([{ ...config[0], url: 'javascript:alert(1)' }]));
+  t.throws(() => validateBangs([config[0], config[0]]));
+  t.equal(bangDestination({ ...config[0], url: '~QUERYHERE~', favicon: '' }, 'javascript:alert(1)'), undefined);
+  t.equal((await app.inject({ method: 'POST', url: '/bangs', headers: { origin: 'https://other.example' }, payload: config })).statusCode, 403);
+  t.equal((await app.inject({ method: 'POST', url: '/bangs', payload: config.map(b => ({ ...b, url: 'javascript:alert(1)' })) })).statusCode, 400);
+  t.equal((await app.inject('/search')).statusCode, 302);
+});

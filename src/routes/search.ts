@@ -4,7 +4,7 @@ import { FastifyPluginAsync } from "fastify";
 import http from "http";
 import https from "https";
 import redirectBody from "../redirectBody";
-import suggestions from "../suggestions";
+import { getBangs, bangDestination } from "../suggestions";
 import { getRichSuggestions } from "../rich";
 const httpAgent = new http.Agent({ keepAlive: true });
 const httpsAgent = new https.Agent({ keepAlive: true });
@@ -15,6 +15,9 @@ const ax = axios.create({
 
 const search: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   fastify.get("/search", async (request: any, reply) => {
+    reply.header("Cache-Control", "private, no-store");
+    reply.header("Vary", "Cookie");
+    if (!request.query?.q) return reply.redirect("/");
     const searchRegex = request.query?.q?.match(/(?<hasBang>\!?)(?<bang>(?<=\!)[\w\d-_]+)?([\s\+]+)?(?<search>.*)?/);
     let search = searchRegex.groups.search;
     const bang = searchRegex.groups.bang?.toLowerCase() || "";
@@ -28,17 +31,14 @@ const search: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
     if (!request.query?.q) {
       return reply.code(302).header("Location", "/");
     } else {
+      const custom = searchRegex.groups.hasBang === "!" && getBangs(request.headers.cookie).find(s => s.aliases.includes(bang));
+      const destination = custom && bangDestination(custom, search);
+      if (destination) return reply.header('Cache-Control', 'private, no-store').redirect(destination);
       const richResult = (await getRichSuggestions(request.query.q)).find((item) => item.suggestion.startsWith("!redirect "));
       if (richResult) {
         return reply.type("text/html; charset=UTF-8").header("Referrer-Policy", "origin").send(redirectBody(richResult.suggestion.slice(10)));
       }
       let hasBang = searchRegex.groups.hasBang === "!" ? true : false;
-      suggestions.forEach((s) => {
-        const a = newBang([bang, ...s.aliases], s.url.replace(`~QUERYHERE~`, search));
-        if (typeof a === typeof reply) {
-          return a;
-        }
-      });
       if (hasBang) {
         const a = newBang([true, hasBang], `https://duckduckgo.com/?q=${encodeURIComponent(request.query.q)}`);
         if (typeof a === typeof reply) {

@@ -2,7 +2,6 @@ import axios, { AxiosRequestConfig } from "axios";
 import { FastifyPluginAsync } from "fastify";
 // import zlib from "zlib";
 import doh from "dohjs";
-import { AbortEvent } from "fastify-racing";
 import http from "http";
 import https from "https";
 import maxmind, { CityResponse } from "maxmind";
@@ -10,9 +9,9 @@ import NodeCache from "node-cache";
 import { existsSync } from "fs";
 import { join } from "path";
 import { ActionInfo, ActionInfo_ActionType, CategoryInfo, CategoryInfo_Category, EntityInfo } from '../proto/entity_info_pb';
-import suggestions from "../suggestions";
+import { getBangs, bangDestination } from "../suggestions";
 import cryptoAssets from "../suggestions/cryptoAssets.json";
-import { getGoogleRichSuggestions, getRichSuggestions } from "../rich";
+import { getGoogleRichSuggestions, getRichSuggestions, featureIcon, plainText } from "../rich";
 const resolver = new doh.DohResolver("https://1.1.1.1/dns-query");
 const bundledGeoDb = join(__dirname, "../GeoLite2-City.mmdb");
 const geoDbPath = existsSync(bundledGeoDb) ? bundledGeoDb : "./src/GeoLite2-City.mmdb";
@@ -38,8 +37,7 @@ const sendReply = (request, results, reply) => {
     [`${suggestDetail}`]: [],
     [`${suggestRelevance}`]: [],
   };
-  results.sort((a, b) => (a.relevance > b.relevance ? -1 : b.relevance > a.relevance ? 1 : 0));
-  results.sort((a, b) => (a.relevance > b.relevance ? -1 : b.relevance > a.relevance ? 1 : 0));
+  results.sort((a, b) => (b[suggestRelevance] || 0) - (a[suggestRelevance] || 0));
   if (request?.query?.type === "json" || request?.query?.format === "json") return results;
   const searchFormat: Array<any> = ["", [], [], []];
   searchFormat[0] = request.query.q;
@@ -49,9 +47,10 @@ const sendReply = (request, results, reply) => {
   results = results.reduce((acc,val) => ([
     ...acc, {...val, 
       [`${suggestDetail}`]: {
+        ...(val[`${suggestDetail}`].template ? { "google:suggesttemplate": val[`${suggestDetail}`].template } : {}),
         "google:entityinfo": Buffer.from((new EntityInfo({
           name: val[`${suggestDetail}`].t,
-          imageUrl: val[`${suggestDetail}`].i,
+          imageUrl: ["ENTITY", "PERSON"].includes(val[`${suggestType}`]) ? val[`${suggestDetail}`].i : undefined,
           dominantColor: val[`${suggestDetail}`].dc,
           annotation: val[`${suggestDetail}`].a,
         }).toBinary())).toString('base64')
@@ -85,11 +84,12 @@ const header = (request.query?.client || 'chrome-omni')?.toLowerCase() === 'fire
     .type("text/javascript; charset=UTF-8")
     .send(`${header}${JSON.stringify(searchFormat)}`);
 };
-const fetchResult = async (signal, request, reply) => {
+const fetchResult = async (signal: AbortSignal, request, results: any[], answerReady: () => void) => {
   const ax = axios.create({
     httpAgent, // httpAgent: httpAgent -> for non es6 syntax
     httpsAgent,
     signal,
+    timeout: 750,
   });
   const suggestType = request?.query?.type === "json" ? "suggestType" : "google:suggesttype";
   const suggestSubtypes = request?.query?.type === "json" ? "suggestSubtypes" : "google:suggestsubtypes";
@@ -101,30 +101,49 @@ const fetchResult = async (signal, request, reply) => {
   const searchRegex = request.query?.q?.match(/(?<hasBang>\!?)(?<bang>(?<=\!)[\w\d-_]+)?([\s\+]+)?(?<search>.*)?/);
   const { search, bang: bangSlug } = searchRegex?.groups ?? {};
   const q = request.query?.q;
+  const bangQuery = /^![\w-]+\s/.test(q);
   const searchingBang = typeof bangSlug === "string" && typeof search !== "undefined";
-  const results = [];
-  const addToResults = (suggestion, type, subtypes, detail, relevance) => 
-    results.push({ suggestion, [suggestType]: type, [suggestSubtypes]: subtypes, [suggestDetail]: detail, [suggestRelevance]: relevance });
+  const addToResults = (suggestion, type, subtypes, detail, relevance) => {
+    if (signal.aborted) return;
+    const cleanDetail = Object.fromEntries(Object.entries(detail || {}).map(([key, value]) => [key, typeof value === 'string' ? plainText(value) : value]));
+    results.push({ suggestion: plainText(String(suggestion)), [suggestType]: type, [suggestSubtypes]: subtypes, [suggestDetail]: cleanDetail, [suggestRelevance]: relevance });
+  };
 
-  const richResults = await getRichSuggestions(q);
-  richResults.forEach((item, index) => addToResults(item.suggestion, item.type || (/conversion|exchange rate/i.test(item.annotation) ? "CALCULATOR" : "ENTITY"), ["emu"], {
-    a: item.annotation,
-    dc: "#DE5833",
-    i: item.image?.startsWith('/') ? `https://${request.hostname}${item.image}` : item.image || "",
-    q: "",
-    t: item.title,
-  }, item.relevance ?? 7000 - index));
+  const googleTask = getGoogleRichSuggestions(bangQuery ? search || "" : searchingBang ? search : q, bangQuery ? bangSlug : undefined, signal).then(googleResults => {
+    googleResults.forEach((item) => addToResults(item.suggestion, item.type || "QUERY", [], {
+      a: item.annotation,
+      dc: "#DE5833",
+      i: featureIcon(item)?.startsWith('/') ? `https://${request.hostname}${featureIcon(item)}` : featureIcon(item) || "",
+      template: item.suggestTemplate,
+      q: "",
+      t: item.title,
+    }, item.relevance));
+  }).catch(() => {});
 
+  const richTask = getRichSuggestions(q, signal).then(richResults => {
+    richResults.forEach((item, index) => {
+    const icon = featureIcon({ ...item, type: item.type || (/^(Unit conversion|Frankfurter exchange rate)/i.test(item.annotation) ? "CALCULATOR" : "ENTITY") });
+    addToResults(item.suggestion, item.type || (/^(Unit conversion|Frankfurter exchange rate)/i.test(item.annotation) ? "CALCULATOR" : "ENTITY"), ["emu"], {
+      a: item.annotation,
+      dc: "#DE5833",
+      i: icon?.startsWith('/') ? `https://${request.hostname}${icon}` : icon || "",
+      q: "",
+      t: item.title,
+    }, item.relevance ?? 7000 - index);
+    });
+    if (richResults.length && !bangQuery) answerReady();
+  }).catch(() => {});
   console.log(`search ${search}, bangSlug ${bangSlug}`);
-  suggestions.forEach(s => {
-    if (s.aliases.some(a => a.startsWith(bangSlug))) {
-      addToResults(`!${s.name}${search ? ` ${search}` : ""}`, "ENTITY", ["Custom Bang", "BANG", s.url.replace(`~QUERYHERE~`, search)], {
-        a: s.url.replace(`~QUERYHERE~`, search),
+  getBangs(request.headers.cookie).forEach(s => {
+    if (q?.startsWith("!") && (bangQuery ? s.aliases.includes((bangSlug || "").toLowerCase()) : s.aliases.some(a => a.startsWith((bangSlug || "").toLowerCase())))) {
+      addToResults(`!${bangQuery ? bangSlug : s.name}${search ? ` ${search}` : ""}`, "ENTITY", ["Custom Bang", "BANG", bangDestination(s, search || "") || s.url], {
+        a: bangDestination(s, search || "") || s.url,
         dc: "#DE5833",
         i: `https://search.emu.sh/icons/${s.favicon}`,
         q: " ",
         t: `!${s?.name} - ${s?.description}: ${search}`,
-      }, 444);
+      }, bangQuery ? 100 : s.aliases.includes((bangSlug || "").toLowerCase()) ? 8000 : 6000);
+      if (!bangQuery && s.aliases.includes((bangSlug || "").toLowerCase())) answerReady();
     }
   });
   const cryptoSearch = request.query?.q.trim()?.match(/(?<coef>\d+(?:\.\d+)?)?\s?(?<symbol>.*)?/);
@@ -140,6 +159,7 @@ const fetchResult = async (signal, request, reply) => {
   console.log(JSON.stringify(cryptoSearch));
   console.log("CryptoCompare configured, assets.length > 0", Boolean(process?.env?.CRYPTOCOMPARE_KEY), assets.length > 0)
   const cryptocompareKey = process?.env?.CRYPTOCOMPARE_KEY || false;
+  const cryptoTask = (async () => {
   if (assets.length > 0 && cryptocompareKey) {
     let opt: AxiosRequestConfig = {
       method: "GET",
@@ -184,15 +204,11 @@ const fetchResult = async (signal, request, reply) => {
     );    
   }
 
-  // if (results.length > 0) {
-  //   childSpan.end();
-  //   return sendReply(request, results, reply);
-  // }
-  try {
-    await Promise.any([
+  })().catch(() => {});
+  const legacyTask = (async () => {
+    await Promise.allSettled([
       // Dig and ip2location
-      new Promise<Array<any>>(async (resolve, reject) => {
-        let results = [];
+      (async () => {
         const isDig = q.match(
           /(dig\s)?(?<domain>(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9])\s(?<DNS>A|AAAA|ALIAS|CNAME|MX|NS|PTR|SOA|SRV|TXT)(\s@)?(?<ns>(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9])?/i
         );
@@ -225,12 +241,12 @@ const fetchResult = async (signal, request, reply) => {
                   i:
                     typeof geolocation?.country?.iso_code !== "undefined"
                       ? `https://cdn.ip2location.com/assets/img/flags/${geolocation?.country?.iso_code?.toLowerCase()}.png?cache=${i}`
-                      : `https://emu.bz/gay.png`,
+                      : `https://${request.hostname}/icon/DNS.svg`,
                   q: "",
                   t: `${ans.name} ${ans.ttl} ${ans.class} ${ans.type} ${ans.data?.exchange || ans.data}`,
                 }, 512 * (response.answers.length - i));
               console.log(`${results.length} ans: ${JSON.stringify(ans)}\n\nresults:\n${JSON.stringify(results)}`);
-              if (results.length) resolve(results);
+              if (results.length) return results;
             })
           );
           console.log(`results: ${JSON.stringify(results)}`);
@@ -251,17 +267,16 @@ const fetchResult = async (signal, request, reply) => {
             }, 9999);
           }
         }
-        if (results.length > 0) resolve(results);
-        else reject("no results");
-      }),
+        if (results.length > 0) return results;
+        else return [];
+      })(),
       //DuckDuckGo bangs
-      new Promise<Array<any>>(async (resolve, reject) => {
-        if (typeof bangSlug !== "string" || request.query.q.trim() === "") {
-          reject();
+      (async () => {
+        if (bangQuery || typeof bangSlug !== "string" || request.query.q.trim() === "") {
+          return [];
         } else {
-          let results = [];
           const bangRequest: AxiosRequestConfig = {
-            url: `https://api.duckduckgo.com/?q=${request.query.q.trim()}&format=json&pretty=0&no_redirect=1`,
+            url: `https://api.duckduckgo.com/?q=${encodeURIComponent(request.query.q.trim())}&format=json&pretty=0&no_redirect=1`,
           };
           const bangsRequest: AxiosRequestConfig = {
             url: `https://duckduckgo.com/ac/?q=${encodeURIComponent(
@@ -270,7 +285,8 @@ const fetchResult = async (signal, request, reply) => {
           };
           await Promise.all([ax.request(bangRequest).catch((e) => console.log(e.code)), ax.request(bangsRequest).catch((e) => console.log(e.code))])
             .then((res: any) => {
-              const [{ data: bangs }, { data: bangss }] = res;
+              const bangs = res[0]?.data;
+              const bangss = Array.isArray(res[1]?.data) ? res[1].data : [];
               if (bangs?.Redirect) {
                 console.log("redirect");
                 if (bangs?.Image)
@@ -312,55 +328,41 @@ const fetchResult = async (signal, request, reply) => {
                   }
                 }
               });
-              if (results.length > 0) resolve(results);
+              if (results.length > 0) return results;
             })
             .catch((e) => console.log(e.code));
         }
-        if (results.length > 0) resolve(results);
-        else reject("no results");
-      }),
+        if (results.length > 0) return results;
+        else return [];
+      })(),
     ]);
-    console.log(`results::: ${results}`);
-  } catch (e) {
-    console.error(e.message);
-  }
-  console.log("results length", results.length);
-  if (results.length < 4) {
-    const googleResults = await getGoogleRichSuggestions(searchingBang ? search : q, searchingBang ? bangSlug : undefined);
-    googleResults.forEach((item) => addToResults(item.suggestion, item.type || "QUERY", [], {
-      a: item.annotation,
-      dc: "#DE5833",
-    i: item.image?.startsWith('/') ? `https://${request.hostname}${item.image}` : item.image || "",
-      q: "",
-      t: item.title,
-    }, item.relevance));
-  }
-  reply.code(200);
-  console.log("sending reply")
-  return sendReply(request, results, reply);
+  })();
+  await Promise.allSettled([richTask, googleTask, cryptoTask, legacyTask]);
 };
 const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   fastify.get("/suggest", async function (request: any, reply) {
-    console.log("request", request.query.q);
-    const signal = request.race();
-    const result: AbortEvent | unknown = await Promise.race([
-      signal,
-      new Promise(async (resolve, reject) => {
-        let result = "";
-        try {
-          result = await fetchResult(signal, request, reply);
-          resolve(result);
-        } catch (e) {
-          console.error(e?.message || e?.code || e);
-          result = e?.message || e?.code || e;
-          reject(result);
-        }
-      }).catch((e) => {console.trace(e); console.log(`ERROR\n\n ${e?.message || e?.code || e}`); return sendReply(request, [], reply)}),
-    ]);
-    if ((<AbortEvent>result)?.type === "aborted") {
-      return "aborted";
+    reply.header("Cache-Control", "private, no-store");
+    reply.header("Vary", "Cookie");
+    if (typeof request.query.q !== 'string') return reply.code(400).send({ error: 'q must be a string' });
+    const controller = new AbortController();
+    const results: any[] = [];
+    let deadline: ReturnType<typeof setTimeout>;
+    const disconnected = () => controller.abort();
+    reply.raw.once('close', disconnected);
+    let answerReady: () => void;
+    const decisiveAnswer = new Promise<void>(resolve => { answerReady = resolve; });
+    try {
+      await Promise.race([
+        fetchResult(controller.signal, request, results, answerReady).catch(() => {}),
+        decisiveAnswer,
+        new Promise<void>(resolve => { deadline = setTimeout(resolve, 900); }),
+      ]);
+      controller.abort();
+      return sendReply(request, results, reply);
+    } finally {
+      clearTimeout(deadline);
+      reply.raw.removeListener('close', disconnected);
     }
-    return result;
   });
 };
 

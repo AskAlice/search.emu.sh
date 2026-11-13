@@ -1,5 +1,5 @@
 import { test } from 'tap'
-import { cleanUrl, convertUnit, getRichSuggestions, hexToRgbHsl } from '../src/rich'
+import { cleanUrl, convertUnit, featureIcon, getRichSuggestions, hexToRgbHsl, plainText } from '../src/rich'
 
 test('unit conversion supports temperature, distance, mass, and aliases', async (t) => {
   t.equal(convertUnit(72, 'f', 'c'), 22.222222)
@@ -26,10 +26,20 @@ test('cleanUrl removes tracking parameters and preserves search', async (t) => {
   t.equal(cleanUrl('not a url'), 'not a url')
 })
 
+test('plainText strips provider markup and decodes entities', async (t) => {
+  t.equal(plainText('emu<b>.</b>sh<b>&nbsp;error</b>'), 'emu.sh error')
+  t.equal(plainText('Tom &amp; Jerry'), 'Tom & Jerry')
+  t.equal(featureIcon({ suggestion: 'ssl emu.sh', title: 'emu.sh TLS certificate', annotation: '' }), '/icon/SSL.svg?v=2')
+})
+
 test('bang discovery is local and uses discovery relevance', async (t) => {
   const all = await getRichSuggestions('!')
-  t.equal(all.length, 8)
+  t.equal(all.length, 7)
   t.ok(all.every(item => item.relevance === 4500 && item.annotation.length > 0))
+
+  t.same(await getRichSuggestions('!npm'), [])
+  t.same(await getRichSuggestions('!npm react'), [])
+  t.ok(all.every(item => featureIcon(item)))
 
   const github = await getRichSuggestions('!g')
   t.equal(github.length, 1)

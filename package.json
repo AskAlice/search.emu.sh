@@ -7,16 +7,19 @@
     "test": "test"
   },
   "scripts": {
-    "test": "npm run build:ts && tsc -p test/tsconfig.test.json && cross-env TS_NODE_FILES=true tap --ts test/**/*.test.ts",
-    "start": "npm run build:ts && fastify start -l info dist/main.js",
-    "predeploy": "npm run build:ts",
-    "production": "cross-env NODE_ENV=production fastify start -l info dist/main.js -p 3006 -a 0.0.0.0",
+    "test": "npm run build && tsc -p test/tsconfig.test.json && cross-env TS_NODE_FILES=true tap --ts test/**/*.test.ts",
+    "start": "fastify start -l info -p 3006 -a 0.0.0.0 dist/plugin.js",
+    "predeploy": "npm run build",
+    "production": "cross-env NODE_ENV=production npm start",
     "build:ts": "tsc",
     "dev:ts": "tsc -w",
-    "dev:node": "npx dotenv-cli -e .env -- npx nodemon --watch 'dist/**/*.js' --exec node dist/main.js",
-    "development": "concurrently \"npm:dev:ts\" \"npm:dev:node\"",
-    "devold": "concurrently -k -p \"[{name}]\" -n \"search.emu.sh\" -c \"yellow.bold,cyan.bold\" \"tsc -w\" \"fastify start -a 0.0.0.0 --ignore-watch=.ts$ -p 3006 --trace-deprecation -w -l info -P dist/app.js\"",
-    "dev": "npx dotenv-cli -e .env -- tsc && concurrently -k \"npm:dev:*\" "
+    "dev": "npm run build:ts && concurrently -k -n api,web,ts \"npm:dev:api\" \"npm:dev:web\" \"npm:dev:ts\"",
+    "test:unit": "npm run build && tsc -p test/tsconfig.test.json && cross-env TS_NODE_FILES=true tap --no-coverage --ts 'test/**/*.test.ts'",
+    "build": "npm run build:ts && npm run build:web",
+    "build:web": "tsc -p tsconfig.web.json && vite build",
+    "vercel-build": "npm run build",
+    "dev:api": "cross-env PORT=3006 fastify start -w -l info -p 3006 -a 0.0.0.0 dist/plugin.js",
+    "dev:web": "vite"
   },
   "keywords": [],
   "author": "",
@@ -65,16 +68,23 @@
     "node-dig-dns": "^0.3.0",
     "openai": "^3.1.0",
     "ping": "^0.4.1",
-    "protobufjs": "^7.2.4"
+    "protobufjs": "^7.2.4",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
-    "@types/node": "^15.0.0",
+    "@types/node": "^24.0.0",
     "@types/tap": "^15.0.0",
     "concurrently": "^6.0.0",
     "fastify-tsconfig": "^1.0.1",
     "protobufjs-cli": "^1.1.1",
     "tap": "^15.0.9",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "unocss": "66.12.0",
+    "vite": "8.3.5"
   }
 }
