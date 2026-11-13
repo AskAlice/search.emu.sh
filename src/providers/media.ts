@@ -6,7 +6,7 @@ export async function mediaSuggestions(kind: 'movie' | 'tv', query: string, sign
   const key = process.env.TMDB_API_KEY;
   if (!token && !key) return [];
   try {
-    const url = new URL(`https://api.themoviedb.org/3/search/${kind}`);
+    const url = new URL(kind === 'tv' ? 'https://api.themoviedb.org/3/search/tv' : 'https://api.themoviedb.org/3/search/movie');
     url.searchParams.set('query', query);
     if (!token) url.searchParams.set('api_key', key!);
     const data = await cachedGet(url.href, 3600, {
