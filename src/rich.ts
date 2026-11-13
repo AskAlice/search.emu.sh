@@ -376,7 +376,7 @@ export async function getRichSuggestions(query: string, signal?: AbortSignal): P
     match = q.match(/^(CVE-\d{4}-\d{4,})$/i);
     if (match) {
       const id = match[1].toUpperCase();
-      const data = await cachedGet(`https://api.osv.dev/v1/vulns/${id}`, 3600, { timeout: TIMEOUT, signal });
+      const data = await cachedGet(`https://api.osv.dev/v1/vulns/${encodeURIComponent(id)}`, 3600, { timeout: TIMEOUT, signal });
       const details = String(data.details || data.summary || "OSV vulnerability record").replace(/\s+/g, " ").slice(0, 300);
       return [redirect(`https://nvd.nist.gov/vuln/detail/${id}`, `${id}: ${data.summary || "Vulnerability"}`, details)];
     }

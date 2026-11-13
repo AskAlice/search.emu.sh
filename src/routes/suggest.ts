@@ -43,12 +43,18 @@ const sendReply = (request, results, reply) => {
     [`${suggestRelevance}`]: [],
   };
   results.sort((a, b) => (b[suggestRelevance] || 0) - (a[suggestRelevance] || 0));
-  const seen = new Set<string>();
-  // Google sends an entity row ("Brad Pitt — American actor") with the same text as the plain query; keep both, like Chrome.
-  results = results.filter(item => {
-    const key = `${item.suggestion}\u0000${item[suggestDetail]?.entityInfo ? 'entity' : ''}`;
-    if (seen.has(key)) return false; seen.add(key); return true;
-  });
+  // One row per suggestion, ignoring case. A rich row (entity/template/ENTITY type) replaces a plain one
+  // in the plain row's higher-ranked slot, so "brad pitt" becomes "Brad Pitt — American actor" with its picture.
+  const richness = item => (item[suggestDetail]?.entityInfo || item[suggestDetail]?.template ? 2 : 0)
+    + ([].concat(item[suggestType]).some(type => type === 'ENTITY' || type === 'PERSON') ? 1 : 0);
+  const slots = new Map<string, number>();
+  const deduped: any[] = [];
+  for (const item of results) {
+    const key = item.suggestion.toLowerCase(), slot = slots.get(key);
+    if (slot === undefined) { slots.set(key, deduped.length); deduped.push(item); }
+    else if (richness(item) > richness(deduped[slot])) deduped[slot] = { ...item, [suggestRelevance]: deduped[slot][suggestRelevance] };
+  }
+  results = deduped;
   if (request?.query?.type === "json" || request?.query?.format === "json") return results;
   const searchFormat: Array<any> = ["", [], [], []];
   searchFormat[0] = request.query.q;

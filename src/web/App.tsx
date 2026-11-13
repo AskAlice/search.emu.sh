@@ -301,9 +301,9 @@ export default function App() {
             <div ref={listRef} id="suggestions" role="listbox" aria-label={searching ? 'Search suggestions' : 'Example searches'} className="scroll-dark relative h-62 overflow-y-auto border-b border-line p-1.5 md:h-108 md:border-b-0 md:border-r" onMouseDown={(event) => event.preventDefault()}>
               {rows.map((row, index) => (
                 <div key={row.key} id={`suggestion-${index}`} role="option" aria-selected={index === activeIndex} onClick={() => run(row)} onMouseMove={() => { if (index !== activeIndex) setActiveIndex(index) }}
-                  className={`grid cursor-pointer grid-cols-[32px_64px_minmax(0,1fr)] items-center gap-2.5 rounded-1.5 border-l-2 px-2.5 py-2 md:grid-cols-[32px_84px_minmax(0,1fr)] ${index === activeIndex ? 'border-ember bg-raise' : 'border-transparent'}`}>
-                  <Picture key={row.suggestion?.suggestDetail?.i ?? ''} detail={row.suggestion?.suggestDetail} size="h-8 w-8 rounded-md" icon="h-4 w-4" />
+                  className={`grid cursor-pointer grid-cols-[64px_32px_minmax(0,1fr)] items-center gap-2.5 rounded-1.5 border-l-2 px-2.5 py-2 md:grid-cols-[84px_32px_minmax(0,1fr)] ${index === activeIndex ? 'border-ember bg-raise' : 'border-transparent'}`}>
                   <span className={`truncate text-xs ${row.tone}`}>{row.tag}</span>
+                  <Picture key={row.suggestion?.suggestDetail?.i ?? ''} detail={row.suggestion?.suggestDetail} size="h-8 w-8 rounded-md" icon="h-4 w-4" />
                   <span className="min-w-0">
                     <span className="block truncate">{row.title}</span>
                     {row.sub && <span className="block truncate text-xs text-muted">{row.sub}</span>}
