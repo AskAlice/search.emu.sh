@@ -17,7 +17,7 @@ t.test('short domain syntax defaults to A and preserves explicit record types', 
   t.teardown(async()=>{axios.defaults.adapter=adapter;doh.DohResolver.prototype.query=query;await app.close()});
   for (const q of ['example.com','example.com MX','dig example.com TXT']) {
     const items=(await app.inject('/suggest?type=json&q='+encodeURIComponent(q))).json();
-    t.match(items[0].suggestion,/toolbox.googleapps.com/, 'DNS result ranks above generic autocomplete');
+    t.match(items[0].suggestion,/toolbox\.googleapps\.com/, 'DNS result ranks above generic autocomplete');
   }
   t.same(seen,[['example.com','A'],['example.com','MX'],['example.com','TXT']]);
 });

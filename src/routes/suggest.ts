@@ -151,7 +151,6 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
     });
     if (richResults.length && !bangQuery) answerReady();
   }).catch(() => {});
-  console.log(`search ${search}, bangSlug ${bangSlug}`);
   getBangs(request.headers.cookie).forEach(s => {
     if (q?.startsWith("!") && (bangQuery ? s.aliases.includes((bangSlug || "").toLowerCase()) : s.aliases.some(a => a.startsWith((bangSlug || "").toLowerCase())))) {
       addToResults(`!${bangQuery ? bangSlug : s.name}${search ? ` ${search}` : ""}`, "ENTITY", ["Custom Bang", "BANG", bangDestination(s, search || "") || s.url], {
@@ -172,10 +171,7 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
         a.assetName.toLowerCase() === cryptoSearch?.groups?.symbol?.toLowerCase()
       )
     : [];
-  console.log(`assets: ${JSON.stringify(assets)}`);
 
-  console.log(JSON.stringify(cryptoSearch));
-  console.log("CryptoCompare configured, assets.length > 0", Boolean(process?.env?.CRYPTOCOMPARE_KEY), assets.length > 0)
   const cryptocompareKey = process?.env?.CRYPTOCOMPARE_KEY || false;
   const cryptoTask = (async () => {
   if (assets.length > 0 && cryptocompareKey) {
@@ -189,14 +185,10 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
     const cachedPrice = cache.get(assets[0].assetSymbol);
     let cryptoData: any = { data: { USD: cachedPrice } };
     if (typeof cachedPrice === "undefined") {
-      console.log("price not cached");
       cryptoData = await ax.request(opt);
       cache.set(assets[0].assetSymbol, cryptoData.data.USD, 300);
-    } else {
-      console.log("price cached");
     }
     const coef = cryptoSearch?.groups?.coef ? cryptoSearch?.groups?.coef : 1;
-    console.log(`USD`,cryptoData?.data?.USD);
     addToResults(
       `!cmc ${assets[0].assetName.toLowerCase().replace(" ", "-")}`,
       "ENTITY",
@@ -229,13 +221,11 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
       (async () => {
         const dns = parseDnsQuery(q);
         if (dns) {
-          console.log("MATCHED");
           const response = await resolver.query(dns.domain, dns.type, "POST", null, 750);
 
           await Promise.all(
             response.answers.map(async (ans, i) => {
               let answer = ans?.data?.exchange || ans?.data;
-              console.log(`answer: ${JSON.stringify(ans)}`);
               let ip = "";
               // IP
               if (
@@ -248,9 +238,7 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
               if (await maxmind.validate(ip)) {
                 const lookup = await maxmind.open<CityResponse>(geoDbPath);
                 geolocation = await lookup.get(ip);
-                console.log(JSON.stringify(geolocation))
               }
-              console.log("hmm");
               addToResults(`!redirect https://toolbox.googleapps.com/apps/dig/?cache=${i}#${dns.type}/${dns.domain}`, "ENTITY", [512, 433], {
                   a: `${ans.name} ${ans.ttl} ${ans.class} ${ans.type} ${ans.data?.exchange || ans.data}`,
                   dc: "#DE5833",
@@ -261,17 +249,13 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
                   q: "",
                   t: `${ans.name} ${ans.ttl} ${ans.class} ${ans.type} ${ans.data?.exchange || ans.data}`,
                 }, 6500 - i);
-              console.log(`${results.length} ans: ${JSON.stringify(ans)}\n\nresults:\n${JSON.stringify(results)}`);
               if (results.length) return results;
             })
           );
-          console.log(`results: ${JSON.stringify(results)}`);
-          console.log(`results.length: ${results.length}`);
         } else {
           if (typeof search === "string" && maxmind.validate(search?.trim())) {
             const lookup = await maxmind.open<CityResponse>(geoDbPath);
             const geolocation = await lookup.get(search.trim());
-            console.log(`geolocation: ${JSON.stringify(geolocation)}`); // inferred type maxmind.CityResponse
             addToResults(search, "ENTITY", ["Country"], {
               a: `${geolocation?.city?.names?.en ? `${geolocation?.city?.names?.en}, ` : ""}${
                 geolocation?.subdivisions?.length ? `${geolocation?.subdivisions[0]?.iso_code}, ` : ""
@@ -304,7 +288,6 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
               const bangs = res[0]?.data;
               const bangss = Array.isArray(res[1]?.data) ? res[1].data : [];
               if (bangs?.Redirect) {
-                console.log("redirect");
                 if (bangs?.Image)
                 addToResults(`${request.query.q}`, "ENTITY", [512, 199, 175], {
                   a: `${bangs?.Redirect}`,

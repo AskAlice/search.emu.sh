@@ -11,7 +11,7 @@ t.test('Brave rich results, bang completions, and failure fallback', async t => 
   let calls = 0;
   axios.defaults.adapter = async config => {
     calls++;
-    if (config.url!.includes('api.search.brave.com')) {
+    if (new URL(config.url!).hostname === 'api.search.brave.com') {
       t.equal(config.headers['X-Subscription-Token'], 'test-only');
       const url = new URL(config.url!);t.equal(url.searchParams.get('rich'), 'true');
       return { data: { results: [ { query: 'albert einstein', is_entity: true, title:'Albert Einstein', description:'Physicist', img:'https://example.com/einstein.jpg' }, {query:'albert einstein quotes'}, {query:null}, {query:'unsafe image', img:'javascript:alert(1)'} ] }, config, headers:{}, status:200, statusText:'OK' };
@@ -32,7 +32,7 @@ t.test('Brave rich results, bang completions, and failure fallback', async t => 
   t.equal(entity.name,'Albert Einstein');t.equal(entity.annotation,'Physicist');t.equal(entity.imageUrl,'https://example.com/einstein.jpg');
   const before=calls;t.same(await braveSuggestions('x'.repeat(401)),[]);t.equal(calls,before);
   const originalFixture=axios.defaults.adapter as (config:any)=>Promise<any>;
-  axios.defaults.adapter=async config=>{if(config.url!.includes('api.search.brave.com'))throw new Error('Brave plan unavailable');return originalFixture(config)};
+  axios.defaults.adapter=async config=>{if(new URL(config.url!).hostname === 'api.search.brave.com')throw new Error('Brave plan unavailable');return originalFixture(config)};
   t.same(await braveSuggestions('albert'),[]);
   t.ok((await app.inject('/suggest?type=json&q=albert')).json().some(item=>item.suggestion==='google only'),'Google works when Brave fails');
 });

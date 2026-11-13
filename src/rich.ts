@@ -353,7 +353,7 @@ export async function getRichSuggestions(query: string, signal?: AbortSignal): P
   if (!q) return [];
   try {
     if (/^![a-z]*$/i.test(q)) return discovery(q.slice(1).toLowerCase());
-    const media = q.match(/^(movie|tv)\s+(.+)$/i);
+    const media = q.match(/^(movie|tv)\s+(\S.*)$/i);
     if (media) return await mediaSuggestions(media[1].toLowerCase() as 'movie' | 'tv', media[2], signal);
     const commandResult = await command(q, signal);
     if (commandResult) return commandResult;

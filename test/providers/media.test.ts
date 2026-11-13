@@ -44,7 +44,7 @@ t.test('movie/TV search uses individual IDs, years and configurable destinations
     const response = await app.inject('/suggest?type=json&q=movie%20dune');
     t.ok(response.json().some(item => item.suggestion === '!redirect https://www.themoviedb.org/movie/438631'), 'movie provider is wired into autocomplete');
     const redirect = await app.inject('/search?q=movie%20dune');
-    t.match(redirect.body, /https:\/\/www.themoviedb.org\/movie\/438631/, 'search opens the matching media result');
+    t.match(redirect.body, /https:\/\/www\.themoviedb\.org\/movie\/438631/, 'search opens the matching media result');
   } finally { await app.close(); }
   const fixture = axios.defaults.adapter as (config: any) => Promise<any>;
   axios.defaults.adapter = async config => { const response = await fixture(config); response.data.results[0].title = "Director's cut"; return response; };
