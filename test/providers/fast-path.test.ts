@@ -1,6 +1,7 @@
 import t from 'tap';
 import Fastify from 'fastify';
 import axios from 'axios';
+import { httpCache } from '../../src/providers/http';
 import suggest from '../../src/routes/suggest';
 
 t.test('local answers do not wait for stalled upstream services', async t => {
@@ -10,6 +11,7 @@ t.test('local answers do not wait for stalled upstream services', async t => {
     const onAbort = () => { cancelled++; reject(new Error('cancelled')); };
     if (config.signal?.aborted) onAbort(); else config.signal?.addEventListener('abort', onAbort, { once: true });
   });
+  httpCache.flushAll();
   const app = Fastify(); await app.register(suggest);
   t.teardown(async () => { axios.defaults.adapter = adapter; await app.close(); });
   for (const [q,expected] of [['5 in in cm','12.7'],['!orders','!orders']]) {
