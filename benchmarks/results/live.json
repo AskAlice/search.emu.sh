@@ -1,5 +1,5 @@
 {
-  "date": "2026-11-13T01:55:08.753Z",
+  "date": "2026-11-14T02:37:19.405Z",
   "protocol": "HTTP/2 reused session, sequential",
   "coldStarts": "not controlled",
   "rows": [
@@ -8,408 +8,408 @@
       "query": "hello",
       "index": 0,
       "status": 200,
-      "ttfb_ms": 1867.947304,
+      "ttfb_ms": 446.958594,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 1868.396
+      "total_ms": 447.41838700000005
     },
     {
       "host": "search.emu.sh",
       "query": "hello",
       "index": 1,
       "status": 200,
-      "ttfb_ms": 181.82887600000004,
+      "ttfb_ms": 189.65985199999994,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 182.01698699999997
+      "total_ms": 191.37594299999995
     },
     {
       "host": "search.emu.sh",
       "query": "hello",
       "index": 2,
       "status": 200,
-      "ttfb_ms": 207.96274400000038,
+      "ttfb_ms": 193.388413,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 208.54299300000002
+      "total_ms": 193.55417999999997
     },
     {
       "host": "search.emu.sh",
       "query": "hello",
       "index": 3,
       "status": 200,
-      "ttfb_ms": 153.22703199999978,
+      "ttfb_ms": 186.75314400000002,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 153.31996600000002
+      "total_ms": 188.40420399999994
     },
     {
       "host": "search.emu.sh",
       "query": "hello",
       "index": 4,
       "status": 200,
-      "ttfb_ms": 161.31679299999996,
+      "ttfb_ms": 188.6472299999998,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 161.60426899999993
+      "total_ms": 188.76805799999988
     },
     {
       "host": "search.emu.sh",
       "query": "hello",
       "index": 5,
       "status": 200,
-      "ttfb_ms": 162.0010739999998,
+      "ttfb_ms": 186.09911999999986,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 162.1838469999998
+      "total_ms": 186.22085900000002
     },
     {
       "host": "search.emu.sh",
       "query": "hello",
       "index": 6,
       "status": 200,
-      "ttfb_ms": 148.13742999999977,
+      "ttfb_ms": 187.86005,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 148.32513100000006
+      "total_ms": 187.98341099999993
     },
     {
       "host": "search.emu.sh",
       "query": "hello",
       "index": 7,
       "status": 200,
-      "ttfb_ms": 152.35291599999982,
+      "ttfb_ms": 185.234829,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 152.59863700000005
+      "total_ms": 187.18259000000012
     },
     {
       "host": "search.emu.sh",
       "query": "5 in in cm",
       "index": 0,
       "status": 200,
-      "ttfb_ms": 183.39567499999976,
+      "ttfb_ms": 127.05400299999997,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 183.575734
+      "total_ms": 127.15024300000005
     },
     {
       "host": "search.emu.sh",
       "query": "5 in in cm",
       "index": 1,
       "status": 200,
-      "ttfb_ms": 187.93625500000007,
+      "ttfb_ms": 117.86085800000001,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 188.10013899999967
+      "total_ms": 117.94913500000007
     },
     {
       "host": "search.emu.sh",
       "query": "5 in in cm",
       "index": 2,
       "status": 200,
-      "ttfb_ms": 162.34841300000016,
+      "ttfb_ms": 117.60039399999982,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 162.82770600000003
+      "total_ms": 117.67129399999999
     },
     {
       "host": "search.emu.sh",
       "query": "5 in in cm",
       "index": 3,
       "status": 200,
-      "ttfb_ms": 150.19148499999983,
+      "ttfb_ms": 118.51920900000005,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 150.4265089999999
+      "total_ms": 118.6071549999997
     },
     {
       "host": "search.emu.sh",
       "query": "5 in in cm",
       "index": 4,
       "status": 200,
-      "ttfb_ms": 150.20568699999967,
+      "ttfb_ms": 148.346951,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 150.73415599999998
+      "total_ms": 148.42626399999972
     },
     {
       "host": "search.emu.sh",
       "query": "5 in in cm",
       "index": 5,
       "status": 200,
-      "ttfb_ms": 134.82365900000013,
+      "ttfb_ms": 116.72359400000005,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 135.2892710000001
+      "total_ms": 116.79454399999986
     },
     {
       "host": "search.emu.sh",
       "query": "5 in in cm",
       "index": 6,
       "status": 200,
-      "ttfb_ms": 166.33763799999997,
+      "ttfb_ms": 114.40708300000006,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 166.4609790000004
+      "total_ms": 114.47362599999997
     },
     {
       "host": "search.emu.sh",
       "query": "5 in in cm",
       "index": 7,
       "status": 200,
-      "ttfb_ms": 157.63341200000013,
+      "ttfb_ms": 130.4174280000002,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 157.84136500000022
+      "total_ms": 130.48577400000022
     },
     {
       "host": "search.emu.sh",
       "query": "!orders shoes",
       "index": 0,
       "status": 200,
-      "ttfb_ms": 252.0225419999997,
+      "ttfb_ms": 190.52198799999996,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 252.42108000000007
+      "total_ms": 190.60284300000012
     },
     {
       "host": "search.emu.sh",
       "query": "!orders shoes",
       "index": 1,
       "status": 200,
-      "ttfb_ms": 210.36856199999966,
+      "ttfb_ms": 188.35273499999994,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 210.4337029999997
+      "total_ms": 188.47296099999994
     },
     {
       "host": "search.emu.sh",
       "query": "!orders shoes",
       "index": 2,
       "status": 200,
-      "ttfb_ms": 214.04305000000022,
+      "ttfb_ms": 195.32816999999977,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 214.73609399999987
+      "total_ms": 197.37122899999986
     },
     {
       "host": "search.emu.sh",
       "query": "!orders shoes",
       "index": 3,
       "status": 200,
-      "ttfb_ms": 214.28872000000047,
+      "ttfb_ms": 203.49712799999998,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 214.47414800000024
+      "total_ms": 204.12690399999974
     },
     {
       "host": "search.emu.sh",
       "query": "!orders shoes",
       "index": 4,
       "status": 200,
-      "ttfb_ms": 194.30825300000015,
+      "ttfb_ms": 234.65999899999997,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 194.39872399999967
+      "total_ms": 234.753604
     },
     {
       "host": "search.emu.sh",
       "query": "!orders shoes",
       "index": 5,
       "status": 200,
-      "ttfb_ms": 184.63042899999982,
+      "ttfb_ms": 233.84241100000008,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 184.73095399999966
+      "total_ms": 233.93744900000002
     },
     {
       "host": "search.emu.sh",
       "query": "!orders shoes",
       "index": 6,
       "status": 200,
-      "ttfb_ms": 188.31913799999984,
+      "ttfb_ms": 201.95943399999942,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 188.3944449999999
+      "total_ms": 202.77500799999962
     },
     {
       "host": "search.emu.sh",
       "query": "!orders shoes",
       "index": 7,
       "status": 200,
-      "ttfb_ms": 214.8841939999993,
+      "ttfb_ms": 199.87669300000016,
       "cache": "MISS",
       "region": "sfo1::iad1",
       "altSvc": false,
-      "total_ms": 215.28771999999935
+      "total_ms": 199.94656099999975
     },
     {
       "host": "www.google.com",
       "query": "hello",
       "index": 0,
       "status": 200,
-      "ttfb_ms": 188.15947999999935,
+      "ttfb_ms": 186.5540549999996,
       "altSvc": true,
-      "total_ms": 188.40979799999968
+      "total_ms": 186.62717900000007
     },
     {
       "host": "www.google.com",
       "query": "hello",
       "index": 1,
       "status": 200,
-      "ttfb_ms": 61.43258499999956,
+      "ttfb_ms": 67.88242999999966,
       "altSvc": true,
-      "total_ms": 61.509634000000005
+      "total_ms": 68.05926499999987
     },
     {
       "host": "www.google.com",
       "query": "hello",
       "index": 2,
       "status": 200,
-      "ttfb_ms": 59.816869000000224,
+      "ttfb_ms": 65.24577200000022,
       "altSvc": true,
-      "total_ms": 59.86326099999951
+      "total_ms": 65.29546899999968
     },
     {
       "host": "www.google.com",
       "query": "hello",
       "index": 3,
       "status": 200,
-      "ttfb_ms": 58.84699600000022,
+      "ttfb_ms": 64.08051500000056,
       "altSvc": true,
-      "total_ms": 58.894640000000436
+      "total_ms": 64.31337600000006
     },
     {
       "host": "www.google.com",
       "query": "hello",
       "index": 4,
       "status": 200,
-      "ttfb_ms": 66.54075399999965,
+      "ttfb_ms": 62.68794600000001,
       "altSvc": true,
-      "total_ms": 66.60389199999918
+      "total_ms": 62.750011999999515
     },
     {
       "host": "www.google.com",
       "query": "hello",
       "index": 5,
       "status": 200,
-      "ttfb_ms": 61.2698019999998,
+      "ttfb_ms": 75.1294170000001,
       "altSvc": true,
-      "total_ms": 61.33201899999949
+      "total_ms": 75.19547000000057
     },
     {
       "host": "www.google.com",
       "query": "hello",
       "index": 6,
       "status": 200,
-      "ttfb_ms": 60.55340100000012,
+      "ttfb_ms": 58.507613999999194,
       "altSvc": true,
-      "total_ms": 60.840455999999904
+      "total_ms": 58.58407199999965
     },
     {
       "host": "www.google.com",
       "query": "hello",
       "index": 7,
       "status": 200,
-      "ttfb_ms": 58.05721100000028,
+      "ttfb_ms": 65.7269069999993,
       "altSvc": true,
-      "total_ms": 58.13223800000014
+      "total_ms": 65.80045100000007
     },
     {
       "host": "www.google.com",
       "query": "5 in in cm",
       "index": 0,
       "status": 200,
-      "ttfb_ms": 60.18175499999961,
+      "ttfb_ms": 56.199924999999894,
       "altSvc": true,
-      "total_ms": 60.39690900000005
+      "total_ms": 56.26471499999934
     },
     {
       "host": "www.google.com",
       "query": "5 in in cm",
       "index": 1,
       "status": 200,
-      "ttfb_ms": 61.76930699999957,
+      "ttfb_ms": 62.88984900000014,
       "altSvc": true,
-      "total_ms": 61.819634999999835
+      "total_ms": 62.98926300000039
     },
     {
       "host": "www.google.com",
       "query": "5 in in cm",
       "index": 2,
       "status": 200,
-      "ttfb_ms": 62.79240200000004,
+      "ttfb_ms": 63.09691000000021,
       "altSvc": true,
-      "total_ms": 62.851584
+      "total_ms": 63.15943700000025
     },
     {
       "host": "www.google.com",
       "query": "5 in in cm",
       "index": 3,
       "status": 200,
-      "ttfb_ms": 62.105577999999696,
+      "ttfb_ms": 70.6922370000002,
       "altSvc": true,
-      "total_ms": 62.16447900000003
+      "total_ms": 70.75131899999997
     },
     {
       "host": "www.google.com",
       "query": "5 in in cm",
       "index": 4,
       "status": 200,
-      "ttfb_ms": 65.7255610000002,
+      "ttfb_ms": 66.2766100000008,
       "altSvc": true,
-      "total_ms": 65.84165099999973
+      "total_ms": 66.32210100000066
     },
     {
       "host": "www.google.com",
       "query": "5 in in cm",
       "index": 5,
       "status": 200,
-      "ttfb_ms": 60.930566,
+      "ttfb_ms": 62.00118100000054,
       "altSvc": true,
-      "total_ms": 60.9746640000003
+      "total_ms": 62.09906200000023
     },
     {
       "host": "www.google.com",
       "query": "5 in in cm",
       "index": 6,
       "status": 200,
-      "ttfb_ms": 61.55363200000011,
+      "ttfb_ms": 68.94234299999971,
       "altSvc": true,
-      "total_ms": 61.65313700000024
+      "total_ms": 69.01953299999968
     },
     {
       "host": "www.google.com",
       "query": "5 in in cm",
       "index": 7,
       "status": 200,
-      "ttfb_ms": 56.98159299999952,
+      "ttfb_ms": 66.61602700000003,
       "altSvc": true,
-      "total_ms": 57.13613299999997
+      "total_ms": 66.77380100000028
     }
   ]
 }
