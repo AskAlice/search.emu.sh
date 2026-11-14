@@ -1,4 +1,4 @@
-import { cachedGet } from './http';
+import { cachedGet, UPSTREAM_TIMEOUT_MS } from './http';
 import type { RichSuggestion } from '../rich';
 
 export async function braveSuggestions(query: string, bangSlug?: string, signal?: AbortSignal, options: Record<string, unknown> = {}): Promise<RichSuggestion[]> {
@@ -9,7 +9,7 @@ export async function braveSuggestions(query: string, bangSlug?: string, signal?
     params.set('q', query); params.set('rich', 'true'); params.set('count', '8');
     if (typeof options.gl === 'string' && /^[a-z]{2}$/i.test(options.gl)) params.set('country', options.gl.toUpperCase());
     if (typeof options.hl === 'string' && /^[a-z]{2,3}(?:-[a-z]{2,4})?$/i.test(options.hl)) params.set('lang', options.hl.toLowerCase());
-    const data = await cachedGet('https://api.search.brave.com/res/v1/suggest/search?' + params, 300, { headers: { Accept: 'application/json', 'X-Subscription-Token': key }, timeout: 600, signal });
+    const data = await cachedGet('https://api.search.brave.com/res/v1/suggest/search?' + params, 300, { headers: { Accept: 'application/json', 'X-Subscription-Token': key }, timeout: UPSTREAM_TIMEOUT_MS, signal });
     if (!Array.isArray(data?.results)) return [];
     return data.results.filter(item => typeof item?.query === 'string' && item.query.trim()).slice(0, 8).map((item, index) => {
       let image: string | undefined;

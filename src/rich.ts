@@ -1,5 +1,5 @@
 import { mediaSuggestions } from './providers/media';
-import { cachedGet } from './providers/http';
+import { cachedGet, UPSTREAM_TIMEOUT_MS } from './providers/http';
 import { EntityInfo } from './proto/entity_info_pb';
 import { chromiumIcon, decodeSuggestTemplate } from './chromium/icons';
 import axios from "axios";
@@ -349,7 +349,7 @@ export function googleSuggestUrl(query: string, options: Record<string, unknown>
 export async function getGoogleRichSuggestions(query: string, bangSlug?: string, signal?: AbortSignal, options: Record<string, unknown> = {}, cursorOffset = 0): Promise<RichSuggestion[]> {
   if (!query.trim()) return [];
   try {
-    const data = await cachedGet(googleSuggestUrl(query, options, cursorOffset), 300, { timeout: TIMEOUT, signal, responseType: 'text', headers: { 'User-Agent': CHROME_UA } });
+    const data = await cachedGet(googleSuggestUrl(query, options, cursorOffset), 300, { timeout: UPSTREAM_TIMEOUT_MS, signal, responseType: 'text', headers: { 'User-Agent': CHROME_UA } });
     return parseGoogleSuggestions(String(data), query, bangSlug);
   } catch { return []; }
 }

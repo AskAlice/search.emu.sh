@@ -1,4 +1,4 @@
-import { cachedGet } from './http';
+import { cachedGet, UPSTREAM_TIMEOUT_MS } from './http';
 import type { RichSuggestion } from '../rich';
 
 export async function mediaSuggestions(kind: 'movie' | 'tv', query: string, signal?: AbortSignal): Promise<RichSuggestion[]> {
@@ -12,7 +12,7 @@ export async function mediaSuggestions(kind: 'movie' | 'tv', query: string, sign
     const endpoint = kind === 'tv' ? 'https://api.themoviedb.org/3/search/tv?' : 'https://api.themoviedb.org/3/search/movie?';
     const data = await cachedGet(endpoint + params, 3600, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      timeout: 750, signal,
+      timeout: UPSTREAM_TIMEOUT_MS, signal,
     });
     if (!Array.isArray(data?.results)) return [];
     return data.results.filter(item => Number.isSafeInteger(item.id) && item.id > 0 && typeof (kind === 'movie' ? item.title : item.name) === 'string')

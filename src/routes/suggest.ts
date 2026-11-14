@@ -14,7 +14,7 @@ import { ActionInfo, ActionInfo_ActionType, CategoryInfo, CategoryInfo_Category,
 import { getBangs, bangDestination, BANG_COOKIE } from "../suggestions";
 import cryptoAssets from "../suggestions/cryptoAssets.json";
 import { getGoogleRichSuggestions, getRichSuggestions, featureIcon, plainText } from "../rich";
-import { cachedGet } from "../providers/http";
+import { cachedGet, UPSTREAM_TIMEOUT_MS } from "../providers/http";
 const resolver = new doh.DohResolver("https://1.1.1.1/dns-query");
 const bundledGeoDb = join(__dirname, "../GeoLite2-City.mmdb");
 const geoDbPath = existsSync(bundledGeoDb) ? bundledGeoDb : "./src/GeoLite2-City.mmdb";
@@ -26,8 +26,6 @@ const openGeoDb = () => (geoReader ??= maxmind.open<CityResponse>(geoDbPath).cat
 const cache = new NodeCache();
 const httpAgent = new http.Agent({ keepAlive: true });
 const httpsAgent = new https.Agent({ keepAlive: true });
-// Per-call cap. The handler deadline below stays strictly greater.
-const UPSTREAM_TIMEOUT_MS = 600;
 
 // Browsers must not reuse a suggestion list; Vercel's CDN consumes s-maxage from
 // Cache-Control and strips it before the client (https://vercel.com/docs/caching/cache-control-headers).
@@ -314,8 +312,8 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
             !searchingBang ? request.query.q.trim() : `!${bangSlug}`
           )}&format=json&pretty=0&no_redirect=1&kl=wt-wt`;
           await Promise.all([
-            cachedGet(bangUrl, 3600, { timeout: 750, signal, httpAgent, httpsAgent }).catch((e) => console.log(e.code)),
-            cachedGet(bangsUrl, 600, { timeout: 750, signal, httpAgent, httpsAgent }).catch((e) => console.log(e.code)),
+            cachedGet(bangUrl, 3600, { timeout: UPSTREAM_TIMEOUT_MS, signal, httpAgent, httpsAgent }).catch((e) => console.log(e.code)),
+            cachedGet(bangsUrl, 600, { timeout: UPSTREAM_TIMEOUT_MS, signal, httpAgent, httpsAgent }).catch((e) => console.log(e.code)),
           ])
             .then((res: any) => {
               const bangs = res[0];
