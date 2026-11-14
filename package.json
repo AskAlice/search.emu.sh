@@ -10,6 +10,7 @@
     "test": "npm run build && tsc -p test/tsconfig.test.json && cross-env TS_NODE_FILES=true tap --ts test/**/*.test.ts",
     "start": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --env-file-if-exists=.env.secrets.local node_modules/fastify-cli/cli.js start -l info -p 3006 -a 0.0.0.0 dist/plugin.js",
     "predeploy": "npm run build",
+    "deploy": "scripts/deploy-vercel.sh",
     "production": "cross-env NODE_ENV=production npm start",
     "build:ts": "tsc",
     "dev:ts": "tsc -w",
