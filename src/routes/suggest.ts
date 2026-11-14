@@ -26,6 +26,8 @@ const openGeoDb = () => (geoReader ??= maxmind.open<CityResponse>(geoDbPath).cat
 const cache = new NodeCache();
 const httpAgent = new http.Agent({ keepAlive: true });
 const httpsAgent = new https.Agent({ keepAlive: true });
+// Per-call cap. The handler deadline below stays strictly greater.
+const UPSTREAM_TIMEOUT_MS = 600;
 
 const sendReply = (request, results, reply) => {
 
@@ -109,7 +111,7 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
     httpAgent, // httpAgent: httpAgent -> for non es6 syntax
     httpsAgent,
     signal,
-    timeout: 750,
+    timeout: UPSTREAM_TIMEOUT_MS,
   });
   const suggestType = request?.query?.type === "json" ? "suggestType" : "google:suggesttype";
   const suggestSubtypes = request?.query?.type === "json" ? "suggestSubtypes" : "google:suggestsubtypes";
@@ -237,7 +239,7 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
       (async () => {
         const dns = parseDnsQuery(q);
         if (dns) {
-          const response = await resolver.query(dns.domain, dns.type, "POST", null, 750);
+          const response = await resolver.query(dns.domain, dns.type, "POST", null, UPSTREAM_TIMEOUT_MS);
 
           await Promise.all(
             response.answers.map(async (ans, i) => {
@@ -370,7 +372,7 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
       await Promise.race([
         fetchResult(controller.signal, request, results, answerReady).catch(() => {}),
         decisiveAnswer,
-        new Promise<void>(resolve => { deadline = setTimeout(resolve, 900); }),
+        new Promise<void>(resolve => { deadline = setTimeout(resolve, 700); }),
       ]);
       controller.abort();
       return sendReply(request, results, reply);

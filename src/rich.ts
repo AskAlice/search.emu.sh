@@ -24,7 +24,7 @@ export interface RichSuggestion {
   website?: string;
 }
 
-const TIMEOUT = 5000;
+const TIMEOUT = 600;
 const answer = (suggestion: string, title: string, annotation: string): RichSuggestion => ({
   suggestion, title, annotation, relevance: 7000,
 });
@@ -349,7 +349,7 @@ export function googleSuggestUrl(query: string, options: Record<string, unknown>
 export async function getGoogleRichSuggestions(query: string, bangSlug?: string, signal?: AbortSignal, options: Record<string, unknown> = {}, cursorOffset = 0): Promise<RichSuggestion[]> {
   if (!query.trim()) return [];
   try {
-    const data = await cachedGet(googleSuggestUrl(query, options, cursorOffset), 300, { timeout: 750, signal, responseType: 'text', headers: { 'User-Agent': CHROME_UA } });
+    const data = await cachedGet(googleSuggestUrl(query, options, cursorOffset), 300, { timeout: TIMEOUT, signal, responseType: 'text', headers: { 'User-Agent': CHROME_UA } });
     return parseGoogleSuggestions(String(data), query, bangSlug);
   } catch { return []; }
 }
