@@ -11,7 +11,7 @@ import NodeCache from "node-cache";
 import { existsSync } from "fs";
 import { join } from "path";
 import { ActionInfo, ActionInfo_ActionType, CategoryInfo, CategoryInfo_Category, EntityInfo } from '../proto/entity_info_pb';
-import { getBangs, bangDestination } from "../suggestions";
+import { getBangs, bangDestination, BANG_COOKIE } from "../suggestions";
 import cryptoAssets from "../suggestions/cryptoAssets.json";
 import { getGoogleRichSuggestions, getRichSuggestions, featureIcon, plainText } from "../rich";
 import { cachedGet } from "../providers/http";
@@ -28,6 +28,22 @@ const httpAgent = new http.Agent({ keepAlive: true });
 const httpsAgent = new https.Agent({ keepAlive: true });
 // Per-call cap. The handler deadline below stays strictly greater.
 const UPSTREAM_TIMEOUT_MS = 600;
+
+// Browsers must not reuse a suggestion list; Vercel's CDN consumes s-maxage from
+// Cache-Control and strips it before the client (https://vercel.com/docs/caching/cache-control-headers).
+const PUBLIC_SUGGEST_CACHE = "public, max-age=0, s-maxage=60, stale-while-revalidate=300";
+const PRIVATE_SUGGEST_CACHE = "private, no-store";
+// Low-cardinality stand-in for the bangs cookie. Vercel does not cache Vary: Cookie
+// (vary_key_denied) and the cache key excludes Cookie, so a cookieless HIT would
+// otherwise be served to someone with custom bangs. vercel.json sets this request
+// header only when emu_bangs is present, and header rules run before the cache lookup.
+const BANGS_VARY = "x-emu-bangs";
+const hasBangsCookie = (cookie: unknown) =>
+  typeof cookie === "string" && cookie.split(";").some(part => part.trim().startsWith(`${BANG_COOKIE}=`));
+const suggestCacheControl = (request, results: unknown[]) =>
+  hasBangsCookie(request.headers?.cookie) || request.headers?.[BANGS_VARY] || results.length === 0
+    ? PRIVATE_SUGGEST_CACHE
+    : PUBLIC_SUGGEST_CACHE;
 
 const sendReply = (request, results, reply) => {
 
@@ -358,9 +374,7 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
 };
 const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   fastify.get("/suggest", async function (request: any, reply) {
-    reply.header("Cache-Control", "private, no-store");
-    reply.header("Vary", "Cookie");
-    if (typeof request.query.q !== 'string') return reply.code(400).send({ error: 'q must be a string' });
+    if (typeof request.query.q !== 'string') return reply.header("Cache-Control", PRIVATE_SUGGEST_CACHE).code(400).send({ error: 'q must be a string' });
     const controller = new AbortController();
     const results: any[] = [];
     let deadline: ReturnType<typeof setTimeout>;
@@ -375,6 +389,9 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         new Promise<void>(resolve => { deadline = setTimeout(resolve, 700); }),
       ]);
       controller.abort();
+      const cacheControl = suggestCacheControl(request, results);
+      reply.header("Cache-Control", cacheControl);
+      if (cacheControl === PUBLIC_SUGGEST_CACHE) reply.header("Vary", BANGS_VARY);
       return sendReply(request, results, reply);
     } finally {
       clearTimeout(deadline);
