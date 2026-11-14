@@ -24,7 +24,10 @@ export interface RichSuggestion {
   website?: string;
 }
 
-const TIMEOUT = 600;
+// Rich lookups (rdap, TLS, HEAD chains, GitHub, npm, OSV, Frankfurter). In /suggest the handler deadline
+// aborts them anyway, so this cap only matters for /search, which awaits them with no deadline to resolve
+// an Enter press into a redirect, and for the TLS/DoH sockets that ignore the abort signal.
+const TIMEOUT = 3000;
 const answer = (suggestion: string, title: string, annotation: string): RichSuggestion => ({
   suggestion, title, annotation, relevance: 7000,
 });
