@@ -14,6 +14,7 @@ import { ActionInfo, ActionInfo_ActionType, CategoryInfo, CategoryInfo_Category,
 import { getBangs, bangDestination } from "../suggestions";
 import cryptoAssets from "../suggestions/cryptoAssets.json";
 import { getGoogleRichSuggestions, getRichSuggestions, featureIcon, plainText } from "../rich";
+import { cachedGet } from "../providers/http";
 const resolver = new doh.DohResolver("https://1.1.1.1/dns-query");
 const bundledGeoDb = join(__dirname, "../GeoLite2-City.mmdb");
 const geoDbPath = existsSync(bundledGeoDb) ? bundledGeoDb : "./src/GeoLite2-City.mmdb";
@@ -290,18 +291,17 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
         if (bangQuery || typeof bangSlug !== "string" || request.query.q.trim() === "") {
           return [];
         } else {
-          const bangRequest: AxiosRequestConfig = {
-            url: `https://api.duckduckgo.com/?q=${encodeURIComponent(request.query.q.trim())}&format=json&pretty=0&no_redirect=1`,
-          };
-          const bangsRequest: AxiosRequestConfig = {
-            url: `https://duckduckgo.com/ac/?q=${encodeURIComponent(
-              !searchingBang ? request.query.q.trim() : `!${bangSlug}`
-            )}&format=json&pretty=0&no_redirect=1&kl=wt-wt`,
-          };
-          await Promise.all([ax.request(bangRequest).catch((e) => console.log(e.code)), ax.request(bangsRequest).catch((e) => console.log(e.code))])
+          const bangUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(request.query.q.trim())}&format=json&pretty=0&no_redirect=1`;
+          const bangsUrl = `https://duckduckgo.com/ac/?q=${encodeURIComponent(
+            !searchingBang ? request.query.q.trim() : `!${bangSlug}`
+          )}&format=json&pretty=0&no_redirect=1&kl=wt-wt`;
+          await Promise.all([
+            cachedGet(bangUrl, 3600, { timeout: 750, signal, httpAgent, httpsAgent }).catch((e) => console.log(e.code)),
+            cachedGet(bangsUrl, 600, { timeout: 750, signal, httpAgent, httpsAgent }).catch((e) => console.log(e.code)),
+          ])
             .then((res: any) => {
-              const bangs = res[0]?.data;
-              const bangss = Array.isArray(res[1]?.data) ? res[1].data : [];
+              const bangs = res[0];
+              const bangss = Array.isArray(res[1]) ? res[1] : [];
               if (bangs?.Redirect) {
                 if (bangs?.Image)
                 addToResults(`${request.query.q}`, "ENTITY", [512, 199, 175], {
@@ -319,11 +319,12 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
                 if (!searchingBang) {
                   if (b?.image?.length > 0) {
                     // Unique per row so Chrome keeps each icon, but stable so the browser can cache it.
-                    b.image += `${b.image.includes("?") ? "&" : "?"}cache=${i}`;
+                    // Copy: httpCache stores the response object, and rewriting b.image would poison later hits.
+                    const image = `${b.image}${b.image.includes("?") ? "&" : "?"}cache=${i}`;
                     addToResults(`${b.phrase} ${search ? `${search}` : ""}`, "ENTITY", ["DuckDuckGo"], {
                       a: b.snippet,
                       dc: "#DE5833",
-                      i: b.image,
+                      i: image,
                       q: "bang",
                       zae: "/g/test",
                       t: `${b.phrase}${search ? ` ${search}` : ""} - ${typeof b.snippet !== "undefined" ? ` ${b.snippet}` : ""}`,

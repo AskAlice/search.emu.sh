@@ -1,6 +1,7 @@
 import t from 'tap';
 import Fastify from 'fastify';
 import axios from 'axios';
+import { httpCache } from '../../src/providers/http';
 import * as rich from '../../src/rich';
 import suggest from '../../src/routes/suggest';
 import icons from '../../src/routes/icon';
@@ -17,6 +18,7 @@ t.test('discovery icons have pictograms and npm comes from DuckDuckGo', async t 
     ];
     return { data, status: 200, statusText: 'OK', headers: {}, config };
   };
+  httpCache.flushAll();
   (rich as any).getGoogleRichSuggestions = async () => [];
   const app = Fastify();
   await app.register(suggest);

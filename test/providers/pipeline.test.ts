@@ -3,6 +3,7 @@ import Fastify from 'fastify';
 import axios from 'axios';
 import doh from 'dohjs';
 import maxmind from 'maxmind';
+import { httpCache } from '../../src/providers/http';
 import suggest from '../../src/routes/suggest';
 import { EntityInfo } from '../../src/proto/entity_info_pb';
 import { SuggestTemplateInfo, SuggestTemplateInfo_IconType as Icon } from '../../src/proto/chromium_suggest_pb';
@@ -23,6 +24,7 @@ t.test('Google, crypto/cache, DNS, geolocation, bangs, and calculator providers'
     else throw new Error('Unexpected provider');
     return { data, config, status: 200, statusText: 'OK', headers: {} };
   };
+  httpCache.flushAll();
   (doh.DohResolver.prototype as any).query = async () => ({ answers: [{ name: 'example.com', ttl: 60, class: 'IN', type: 'TXT', data: 'fixture-record' }] });
   (maxmind as any).open = async () => ({ get: () => ({ city: { names: { en: 'Denver' } }, country: { names: { en: 'United States' }, iso_code: 'US' }, subdivisions: [], location: { latitude: 39.74, longitude: -104.99 } }) });
   const app = Fastify(); await app.register(suggest);
