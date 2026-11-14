@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "regions": ["sfo1"],
   "builds": [
     {
       "src": "src/vercel.ts",
