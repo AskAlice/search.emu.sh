@@ -1,39 +1,24 @@
 import BangSettings from './BangSettings'
-import { useEffect, useState } from 'react'
+import Install from './Install'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || window.location.origin).replace(/\/$/, '')
-
-const INSTALL_SQL = `INSERT INTO "keywords" ("id", "short_name", "keyword", "favicon_url", "url", "safe_for_autoreplace", "originating_url", "date_created", "usage_count", "input_encodings", "suggest_url", "prepopulate_id", "created_by_policy", "last_modified", "sync_guid", "alternate_urls", "image_url", "search_url_post_params", "suggest_url_post_params", "image_url_post_params", "new_tab_url", "last_visited", "created_from_play_api")
-VALUES (8195,
-'emu search',
-'emu',
-'https://emu.sh/favicon.ico',
-'https://search.emu.sh/search?q={searchTerms}',
-0,
-'https://search.emu.sh/osd.xml',
-13265769204726412,
-4,
-'UTF-8',
-'https://search.emu.sh/suggest?client=chrome-omni&q={searchTerms}',
-0,
-0,
-13270754999736713,
-'2f79ed5e-e746-4052-ab15-c5dcae786063',
-'[]', '', '', '', '', '',
-13273967198571427,
-0);`
+const MAX_SUGGESTIONS = 9
 
 type Suggestion = {
   suggestion: string
   suggestType?: string | string[]
   suggestSubtypes?: Array<string | number>
-  suggestDetail?: { a?: string; i?: string; t?: string }
+  suggestDetail?: { a?: string; i?: string; t?: string; dc?: string; entityInfo?: string; template?: string; website?: string; category?: string | string[] }
 }
 
-const EXAMPLE_GROUPS: Array<{ title: string; examples: Array<[string, string]> }> = [
+/** One line in the palette: either a live suggestion or a starter example. */
+type Row = { key: string; tag: string; tone: string; title: string; sub: string; value: string; suggestion?: Suggestion }
+
+const EXAMPLE_GROUPS: Array<{ tag: string; tone: string; examples: Array<[string, string]> }> = [
   {
-    title: 'Rich answers',
+    tag: 'Answer', tone: 'text-gold',
     examples: [
       ['brad pitt', 'Google person card'],
       ['5 btc', 'Live crypto price'],
@@ -45,8 +30,9 @@ const EXAMPLE_GROUPS: Array<{ title: string; examples: Array<[string, string]> }
     ],
   },
   {
-    title: 'Network & web',
+    tag: 'Network', tone: 'text-mint',
     examples: [
+      ['emu.sh', 'DNS A records'],
       ['dig emu.sh MX', 'DNS records'],
       ['whois emu.sh', 'RDAP registration'],
       ['ssl emu.sh', 'TLS certificate'],
@@ -56,7 +42,7 @@ const EXAMPLE_GROUPS: Array<{ title: string; examples: Array<[string, string]> }
     ],
   },
   {
-    title: 'Developer & research',
+    tag: 'Developer', tone: 'text-blue',
     examples: [
       ['npm react', 'npm package metadata'],
       ['gh vercel/vercel', 'GitHub repository'],
@@ -65,10 +51,12 @@ const EXAMPLE_GROUPS: Array<{ title: string; examples: Array<[string, string]> }
       ['isbn 9780306406157', 'Book lookup'],
       ['doi 10.1038/nature12373', 'DOI redirect'],
       ['arxiv:2103.00001', 'arXiv abstract'],
+      ['movie dune', 'Movies from TMDB'],
+      ['tv severance', 'TV shows from TMDB'],
     ],
   },
   {
-    title: 'Shortcuts & utilities',
+    tag: 'Shortcut', tone: 'text-ember',
     examples: [
       ['!', 'Discover custom bangs'],
       ['!a Amazon', 'DuckDuckGo bangs'],
@@ -81,33 +69,82 @@ const EXAMPLE_GROUPS: Array<{ title: string; examples: Array<[string, string]> }
   },
 ]
 
-function SearchIcon() {
-  return <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>
+const STARTERS: Row[] = EXAMPLE_GROUPS.flatMap(group => group.examples.map(([value, sub]) => ({ key: `example-${value}`, tag: group.tag, tone: group.tone, title: value, sub, value })))
+
+// Rich answers (DNS, colours, IP lookups) arrive as a `!redirect <url>` suggestion with the answer in the title.
+const redirectTarget = (item: Suggestion) => /^!redirect\s+(\S+)/.exec(item.suggestion)?.[1]
+const typesOf = (item: Suggestion) => (Array.isArray(item.suggestType) ? item.suggestType : item.suggestType ? [item.suggestType] : [])
+
+function toRow(item: Suggestion, index: number): Row {
+  const types = typesOf(item), detail = item.suggestDetail
+  // Crypto prices open via `!cmc`, but they are answers, not bangs the user typed.
+  const [tag, tone] = redirectTarget(item) || types.includes('CALCULATOR') || item.suggestSubtypes?.includes('crypto') ? ['Answer', 'text-gold']
+    : item.suggestion.startsWith('!') ? ['Bang', 'text-ember']
+    : types.includes('PERSON') || types.includes('ENTITY') ? ['Knowledge', 'text-mint']
+    : types.includes('NAVIGATION') ? ['Site', 'text-blue']
+    : ['Search', 'text-muted']
+  // Bang titles end in the (empty) query they would search for; drop that placeholder.
+  const title = (detail?.t || item.suggestion).replace(/: undefined$/, '')
+  const sub = (detail?.a && !title.includes(detail.a) ? detail.a : '') || item.suggestSubtypes?.filter(type => typeof type === 'string').join(', ') || ''
+  return { key: `${item.suggestion}-${index}`, tag, tone, title, sub, value: item.suggestion, suggestion: item }
 }
 
-function SuggestionRow({ item, active, onSelect, id }: { item: Suggestion; active: boolean; onSelect: () => void; id: string }) {
-  const [imageFailed, setImageFailed] = useState(false)
-  const detail = item.suggestDetail
-  const label = detail?.t || item.suggestion
-  const isCalculator = Array.isArray(item.suggestType) ? item.suggestType.includes('CALCULATOR') : item.suggestType === 'CALCULATOR'
-  const isPerson = item.suggestType === 'PERSON'
-  const detailMeta = detail?.a && !label.includes(detail.a) ? detail.a : ''
-  const meta = detailMeta || item.suggestSubtypes?.filter((type) => typeof type === 'string').join(' · ') || (isCalculator ? 'Calculator' : '')
-  const image = detail?.i?.startsWith('//') ? `https:${detail.i}` : detail?.i
+function SearchIcon({ className }: { className: string }) {
+  return <svg aria-hidden="true" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" /></svg>
+}
 
+function Picture({ detail, size = 'h-18 w-18 rounded-lg', icon = 'h-7 w-7', inline = false }: { detail: Suggestion['suggestDetail']; size?: string; icon?: string; inline?: boolean }) {
+  const [failed, setFailed] = useState(false)
+  const image = detail?.i?.startsWith('//') ? `https:${detail.i}` : detail?.i
+  const tinted = !inline && (detail?.entityInfo || detail?.template) && detail?.dc && /^#[0-9a-f]{6}$/i.test(detail.dc)
+  // Inline (list) icons sit on the row's own background; glyph SVGs get padding so they read at icon size.
+  const glyph = /\/(icon|color)\/|flagcdn\.com/.test(image ?? '')
   return (
-    <button id={id} type="button" role="option" aria-selected={active} className={`w-[calc(100%-16px)] flex items-center gap-3 text-left hover:bg-paper ${active ? 'bg-paper' : isPerson ? 'bg-[#f8fafc]' : 'bg-white'} ${isPerson ? 'mx-2 my-1 rounded-2xl p-4' : 'mx-2 rounded-xl px-3 py-2.5'}`} onClick={onSelect} onMouseDown={(event) => event.preventDefault()}>
-      <span className={`${isPerson ? 'h-16 w-16 rounded-2xl' : 'h-9 w-9 rounded-lg'} flex shrink-0 items-center justify-center overflow-hidden bg-paper text-muted`}>
-        {image && !imageFailed
-          ? <img className="h-full w-full object-cover" src={image} alt="" loading="lazy" onError={() => setImageFailed(true)} />
-          : <SearchIcon />}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className={`block truncate text-ink ${isPerson ? 'text-base font-semibold' : 'text-sm'}`}>{label}</span>
-        {meta && <span className={`${isPerson ? 'mt-1 line-clamp-3 leading-5' : 'mt-0.5 truncate'} block text-xs text-muted`}>{meta}</span>}
-        {isPerson && <span className="mt-1 block text-11px font-medium text-muted">Google · Person</span>}
-      </span>
-    </button>
+    <span style={tinted ? { backgroundColor: detail?.dc } : undefined} className={`grid ${size} shrink-0 place-items-center overflow-hidden text-muted ${inline ? '' : 'bg-raise'}`}>
+      {image && !failed
+        ? <img className={`h-full w-full ${glyph ? 'object-contain p-1.5' : 'object-cover'}`} src={image} alt="" loading="lazy" onError={() => setFailed(true)} />
+        : <SearchIcon className={icon} />}
+    </span>
+  )
+}
+
+function Inspector({ row }: { row: Row | undefined }) {
+  if (!row) return <p className="text-muted">No suggestions. Press Enter to search the web.</p>
+  const item = row.suggestion
+  if (!item) {
+    return (
+      <>
+        <p className={`text-xs ${row.tone}`}>{row.tag} example</p>
+        <h3 className="mt-0.5 break-anywhere text-xl font-bold leading-tight">{row.title}</h3>
+        <p className="mt-0.5 font-sans text-sm text-muted">{row.sub}</p>
+        <p className="mt-4 text-xs text-muted">Enter puts this in the prompt and shows its live answer.</p>
+      </>
+    )
+  }
+  const detail = item.suggestDetail, target = redirectTarget(item)
+  const category = Array.isArray(detail?.category) ? detail.category.join(', ') : detail?.category
+  const facts = [['Category', category], ['Website', detail?.website]].filter((fact): fact is [string, string] => Boolean(fact[1]))
+  return (
+    <>
+      <div className="flex items-start gap-4">
+        <Picture key={detail?.i ?? ''} detail={detail} />
+        <div className="min-w-0">
+          <p className={`text-xs ${row.tone}`}>{row.tag}</p>
+          <h3 className={`mt-0.5 break-anywhere font-bold leading-tight ${row.tag === 'Answer' ? 'text-22px md:text-30px tracking-tight text-mint' : 'text-xl'}`}>{row.title}</h3>
+          {!target && row.title !== item.suggestion && <p className="mt-1 break-anywhere text-xs text-muted">{item.suggestion}</p>}
+        </div>
+      </div>
+      {row.sub && <p className="mt-3.5 max-w-[54ch] font-sans text-sm leading-relaxed">{row.sub}</p>}
+      {facts.length > 0 && (
+        <dl className="mb-0 mt-4.5 grid grid-cols-[max-content_minmax(0,1fr)] text-13px">
+          {facts.map(([name, value]) => [
+            <dt key={`${name}-name`} className="border-t border-line py-1.75 pr-5 text-muted">{name}</dt>,
+            <dd key={`${name}-value`} className="m-0 break-anywhere border-t border-line py-1.75">{value}</dd>,
+          ])}
+        </dl>
+      )}
+      <p className="mt-4 break-anywhere text-xs text-muted">Enter opens <span className="text-sand">{target ?? `${API_BASE}/search?q=${encodeURIComponent(row.value)}`}</span></p>
+    </>
   )
 }
 
@@ -117,9 +154,10 @@ export default function App() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [isOpen, setIsOpen] = useState(false)
+  const [note, setNote] = useState({ text: '', count: 0 })
   const [activeIndex, setActiveIndex] = useState(-1)
-  const [copied, setCopied] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const value = query.trimStart()
@@ -134,13 +172,12 @@ export default function App() {
     const timer = window.setTimeout(async () => {
       setLoading(true)
       setError('')
-      setIsOpen(true)
       try {
         const response = await fetch(`${API_BASE}/suggest?type=json&q=${encodeURIComponent(value)}`, { signal: controller.signal, credentials: 'include' })
         if (!response.ok) throw new Error(`Suggestion request failed: ${response.status}`)
         const data: unknown = await response.json()
         if (!Array.isArray(data)) throw new Error('Unexpected suggestion response')
-        setSuggestions((data as Suggestion[]).filter((item) => typeof item.suggestion === 'string').slice(0, 8))
+        setSuggestions((data as Suggestion[]).filter((item) => typeof item.suggestion === 'string').slice(0, MAX_SUGGESTIONS))
         setActiveIndex(-1)
       } catch (cause) {
         if (cause instanceof DOMException && cause.name === 'AbortError') return
@@ -157,142 +194,153 @@ export default function App() {
     }
   }, [query, bangRevision])
 
+  // "/" focuses the prompt from anywhere outside a form control.
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName ?? '')) return
+      event.preventDefault()
+      inputRef.current?.focus()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Keep the highlighted row inside the scrolling list without moving the page.
+  useEffect(() => {
+    const box = listRef.current, row = activeIndex >= 0 ? document.getElementById(`suggestion-${activeIndex}`) : null
+    if (!box || !row) return
+    const top = row.offsetTop - box.offsetTop
+    if (top < box.scrollTop) box.scrollTop = top
+    else if (top + row.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = top + row.offsetHeight - box.clientHeight
+  }, [activeIndex])
+
+  const searching = Boolean(query.trim())
+  const rows = searching ? suggestions.map(toRow) : STARTERS
+  const current = rows[activeIndex] ?? rows[0]
+
+  const change = (value: string) => {
+    setQuery(value)
+    setActiveIndex(-1)
+    setNote(previous => (previous.text ? { ...previous, text: '' } : previous))
+  }
+  const fill = (value: string) => {
+    change(value)
+    setNote(previous => ({ text: `Completed “${value.trim()}”. Keep typing or press Enter.`, count: previous.count + 1 }))
+    inputRef.current?.focus()
+  }
   const runSearch = (value: string) => {
     const term = value.trim()
     if (term) window.location.assign(`${API_BASE}/search?q=${encodeURIComponent(term)}`)
   }
+  const run = (row: Row | undefined) => {
+    if (!row) runSearch(query)
+    else if (row.suggestion) runSearch(row.value)
+    else fill(row.value)
+  }
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    runSearch(activeIndex >= 0 && suggestions[activeIndex] ? suggestions[activeIndex].suggestion : query)
+    run(rows[activeIndex])
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'ArrowDown' && suggestions.length) {
+    if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && rows.length) {
       event.preventDefault()
-      setIsOpen(true)
-      setActiveIndex((current) => (current + 1) % suggestions.length)
-    } else if (event.key === 'ArrowUp' && suggestions.length) {
+      const step = event.key === 'ArrowDown' ? 1 : -1
+      setActiveIndex(index => (index < 0 ? (step > 0 ? 0 : rows.length - 1) : (index + step + rows.length) % rows.length))
+    } else if (event.key === 'Tab' && !event.shiftKey && activeIndex >= 0 && rows[activeIndex] && rows[activeIndex].value.trim() !== query.trim()) {
       event.preventDefault()
-      setActiveIndex((current) => (current <= 0 ? suggestions.length - 1 : current - 1))
-    } else if (event.key === 'Escape') {
-      setIsOpen(false)
-      setActiveIndex(-1)
+      fill(rows[activeIndex].value)
+    } else if (event.key === 'Escape' && query) {
+      change('')
     }
   }
 
-  const copySql = async () => {
-    try {
-      await navigator.clipboard.writeText(INSTALL_SQL)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 2000)
-    } catch {
-      setCopied(false)
-    }
-  }
-
-  const showSuggestions = isOpen && Boolean(query.trim())
-
-  const runExample = (value: string) => {
-    setQuery(value)
-    setIsOpen(true)
-    setActiveIndex(-1)
-    window.scrollTo({ top: 0 })
-    window.requestAnimationFrame(() => document.getElementById('search')?.focus())
-  }
+  const status = error || (loading ? 'Finding suggestions…' : note.text)
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-ink">
-      <a href="#main" className="absolute left-4 top-4 z-50 -translate-y-24 bg-ink px-4 py-3 text-sm text-white focus:translate-y-0">Skip to content</a>
-      <header className="flex h-20 items-center justify-end px-6">
-        <nav className="flex items-center gap-6 text-sm" aria-label="Main navigation"><a className="py-3 hover:text-ember" href="#bangs">Custom bangs</a><a className="py-3 hover:text-ember" href="#install">Install</a><a className="py-3 hover:text-ember" href="https://github.com/AskAlice/search.emu.sh" target="_blank" rel="noreferrer">GitHub</a></nav>
+    <div className="min-h-screen bg-night pb-px font-mono text-sm leading-normal text-sand">
+      <a href="#main" className="absolute left-3 z-50 -translate-y-24 rounded bg-mint px-3.5 py-2.5 text-night focus:translate-y-3">Skip to content</a>
+      <header className="shell flex items-center gap-2 py-3.5 md:gap-5">
+        <a href="#main" className="flex items-center gap-2.5 font-bold text-sand no-underline"><img src="/favicon.svg" alt="" className="h-6 w-6" />search.emu.sh</a>
+        <nav aria-label="Main navigation" className="ml-auto flex gap-0.5">
+          {[['#bangs', 'bangs'], ['#install', 'install']].map(([href, label]) => (
+            <a key={href} href={href} className="rounded-1.5 px-2 py-2 text-muted no-underline hover:bg-raise hover:text-sand md:px-3">{label}</a>
+          ))}
+          <a href="https://github.com/AskAlice/search.emu.sh" target="_blank" rel="noreferrer" className="rounded-1.5 px-2 py-2 text-muted no-underline hover:bg-raise hover:text-sand md:px-3">github</a>
+        </nav>
       </header>
 
-      <main id="main">
-        <section className="flex min-h-[calc(100vh-160px)] flex-col items-center px-5 pb-32 pt-12 sm:pt-20">
-          <h1 className="text-48px font-medium tracking-[-0.045em] sm:text-64px">search.emu.sh</h1>
-          <p className="mt-3 text-sm text-muted">Your omnibox, with richer answers.</p>
+      <main id="main" className="shell">
+        <h1 className="max-w-[22ch] pb-4 pt-5.5 text-26px font-bold leading-tight tracking-tighter md:pb-5.5 md:pt-9 md:text-40px">Answers in the address bar, before you press Enter.</h1>
 
-          <div className="mt-10 w-full max-w-xl">
-            <form className={`relative bg-white ${showSuggestions ? 'rounded-3xl' : 'rounded-full shadow-[0_2px_10px_rgba(60,64,67,0.18)] focus-within:shadow-[0_4px_16px_rgba(60,64,67,0.22)]'}`} onSubmit={submit} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsOpen(false) }}>
-              <label htmlFor="search" className="sr-only">Search emu</label>
-              <div className="flex h-14 items-center gap-3 px-5">
-                <input
-                  id="search"
-                  type="search"
-                  role="combobox"
-                  aria-autocomplete="list"
-                  aria-expanded={showSuggestions}
-                  aria-controls="suggestions"
-                  aria-activedescendant={activeIndex >= 0 ? `suggestion-${activeIndex}` : undefined}
-                  autoComplete="off"
-                  autoFocus
-                  spellCheck={false}
-                  className="h-full min-w-0 flex-1 border-0 bg-transparent text-base text-ink outline-none ring-0 placeholder:text-muted/80 focus:outline-none focus:ring-0 focus-visible:outline-none"
-                  placeholder="Search the web"
-                  value={query}
-                  onChange={(event) => { setQuery(event.target.value); setIsOpen(true); setActiveIndex(-1) }}
-                  onKeyDown={onKeyDown}
-                  onFocus={() => setIsOpen(true)}
-                />
-                <button type="submit" aria-label="Submit search" className="h-11 w-11 flex shrink-0 items-center justify-center rounded-full text-xl text-muted hover:bg-paper hover:text-ember">→</button>
-              </div>
-
-              {showSuggestions && <div className="overflow-hidden rounded-b-3xl pb-3 pt-1" id="suggestions" role="listbox" aria-label="Search suggestions">
-                {loading && <p className="px-5 py-5 text-sm text-muted" role="status">Finding suggestions…</p>}
-                {!loading && error && <p className="px-5 py-5 text-sm text-muted" role="status">{error}</p>}
-                {!loading && !error && suggestions.length === 0 && <p className="px-5 py-5 text-sm text-muted" role="status">No suggestions. Press enter to search.</p>}
-                {!loading && !error && suggestions.map((item, index) => <SuggestionRow key={`${item.suggestion}-${index}`} id={`suggestion-${index}`} item={item} active={activeIndex === index} onSelect={() => runSearch(item.suggestion)} />)}
-              </div>}
-            </form>
-            <div className="mt-7 flex justify-center gap-3"><button type="button" className="min-h-11 rounded-full bg-white px-5 text-sm shadow-sm hover:bg-paper" onClick={() => runSearch(query)}>Emu Search</button><a className="min-h-11 flex items-center rounded-full bg-white px-5 text-sm shadow-sm hover:bg-paper" href="#install">Install in Chrome</a></div>
+        <form role="search" onSubmit={submit} className="overflow-hidden rounded-2.5 border border-line bg-panel shadow-[0_30px_60px_-30px_#000] focus-within:border-[#4b7a74]">
+          <div className="flex h-14.5 items-center gap-3 border-b border-line px-4.5">
+            <label htmlFor="search" className="whitespace-nowrap font-bold text-ember">emu ›<span className="sr-only"> search</span></label>
+            <input
+              ref={inputRef}
+              id="search"
+              type="text"
+              enterKeyHint="search"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={rows.length > 0}
+              aria-controls="suggestions"
+              aria-activedescendant={activeIndex >= 0 && rows[activeIndex] ? `suggestion-${activeIndex}` : undefined}
+              autoComplete="off"
+              autoCapitalize="off"
+              autoFocus
+              spellCheck={false}
+              className="h-full min-w-0 flex-1 border-0 bg-transparent text-17px caret-ember outline-none placeholder:text-[#8a9f99]"
+              placeholder="search, 5 btc, dig emu.sh MX, !a amazon"
+              value={query}
+              onChange={(event) => change(event.target.value)}
+              onKeyDown={onKeyDown}
+            />
+            <kbd className="kbd" title="Press / to focus search">/</kbd>
           </div>
-        </section>
 
-        <section id="examples" className="border-t border-line bg-white">
-          <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-20">
-            <p className="eyebrow text-ember">Example directory</p>
-            <h2 className="mt-3 text-32px font-semibold">Beyond Google suggestions</h2>
-            <p className="mt-3 max-w-2xl leading-7 text-muted">Select an example to run it. These answers, cards, tools, and redirects are added on top of Google’s autocomplete.</p>
-            <div className="mt-10 grid gap-8 md:grid-cols-2 lg:grid-cols-4">
-              {EXAMPLE_GROUPS.map((group) => <div key={group.title}>
-                <h3 className="text-sm font-semibold">{group.title}</h3>
-                <div className="mt-4 space-y-2">
-                  {group.examples.map(([example, result]) => <button key={example} type="button" className="w-full rounded-xl bg-[#f8fafc] px-4 py-3 text-left hover:bg-paper" onClick={() => runExample(example)}>
-                    <code className="block break-all font-mono text-xs text-ink">{example}</code>
-                    <span className="mt-1 block text-11px text-muted">{result}</span>
-                  </button>)}
+          <div className="grid grid-cols-1 md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+            <div ref={listRef} id="suggestions" role="listbox" aria-label={searching ? 'Search suggestions' : 'Example searches'} className="scroll-dark relative h-62 overflow-y-auto border-b border-line p-1.5 md:h-108 md:border-b-0 md:border-r" onMouseDown={(event) => event.preventDefault()}>
+              {rows.map((row, index) => (
+                <div key={row.key} id={`suggestion-${index}`} role="option" aria-selected={index === activeIndex} onClick={() => run(row)} onMouseMove={() => { if (index !== activeIndex) setActiveIndex(index) }}
+                  className={`grid cursor-pointer grid-cols-[64px_32px_minmax(0,1fr)] items-center gap-2.5 rounded-1.5 border-l-2 px-2.5 py-2 md:grid-cols-[84px_32px_minmax(0,1fr)] ${index === activeIndex ? 'border-ember bg-raise' : 'border-transparent'}`}>
+                  <span className={`truncate text-xs ${row.tone}`}>{row.tag}</span>
+                  <Picture key={row.suggestion?.suggestDetail?.i ?? ''} detail={row.suggestion?.suggestDetail} size="h-8 w-8 rounded-md" icon="h-4 w-4" inline />
+                  <span className="min-w-0">
+                    <span className="block truncate">{row.title}</span>
+                    {row.sub && <span className="block truncate text-xs text-muted">{row.sub}</span>}
+                  </span>
                 </div>
-              </div>)}
+              ))}
+              {searching && rows.length === 0 && <p className="px-2.5 py-4 text-muted">{loading ? 'Finding suggestions…' : error || 'No suggestions. Press Enter to search.'}</p>}
             </div>
+            <aside aria-label="Preview of the highlighted suggestion" className="scroll-dark min-h-55 overflow-y-auto bg-gradient-to-b from-[#172a29] to-panel px-4 py-4.5 md:h-108 md:px-6 md:py-5.5">
+              <Inspector row={current} />
+            </aside>
           </div>
-        </section>
 
-        <BangSettings api={API_BASE} onSave={() => setBangRevision(current => current + 1)} />
-
-        <section id="install" className="scroll-mt-8 border-t border-line bg-paper">
-          <div className="mx-auto max-w-4xl px-5 py-16 sm:px-8 sm:py-20">
-            <p className="eyebrow text-ember">Chrome setup</p>
-            <h2 className="mt-3 text-32px font-semibold">Add emu to your omnibox</h2>
-            <p className="mt-3 max-w-2xl leading-7 text-muted">Chrome stores search engines in a SQLite database. Close Chrome, back up the database, then run the query below.</p>
-
-            <ol className="mt-10 space-y-8">
-              <li><h3 className="font-semibold">1. Quit Chrome completely</h3><p className="mt-1 text-sm leading-6 text-muted">Close every Chrome window and check the system tray. The database must not be open or Chrome may overwrite your edit.</p></li>
-              <li><h3 className="font-semibold">2. Back up “Web Data”</h3><p className="mt-1 text-sm leading-6 text-muted">Find your profile’s database and copy it somewhere safe. Replace <code className="font-mono">Default</code> with your profile folder if needed.</p><dl className="mt-4 space-y-2 break-all font-mono text-xs leading-5 text-muted"><div><dt className="inline text-ink">Windows: </dt><dd className="inline">%LOCALAPPDATA%\Google\Chrome\User Data\Default\Web Data</dd></div><div><dt className="inline text-ink">macOS: </dt><dd className="inline">~/Library/Application Support/Google/Chrome/Default/Web Data</dd></div><div><dt className="inline text-ink">Linux: </dt><dd className="inline">~/.config/google-chrome/Default/Web Data</dd></div></dl></li>
-              <li><h3 className="font-semibold">3. Run the SQL</h3><p className="mt-1 text-sm leading-6 text-muted">Open the database with DB Browser for SQLite or another SQLite client. Paste the query, execute it, then save the database. If the ID or GUID already exists, change those two values.</p></li>
-              <li><h3 className="font-semibold">4. Restart and search</h3><p className="mt-1 text-sm leading-6 text-muted">Open <code className="font-mono">chrome://settings/searchEngines</code> and make emu your default, or type <code className="font-mono">emu</code> then Tab in the omnibox.</p></li>
-            </ol>
-
-            <div className="mt-10 min-w-0 overflow-hidden rounded-lg bg-ink text-paper">
-              <div className="flex items-center justify-between border-b border-paper/20 px-4 py-3"><span className="font-mono text-xs text-paper/60">install-emu.sql</span><button type="button" className="min-h-10 rounded-md bg-ember px-4 text-xs font-semibold text-white hover:bg-white hover:text-ink" onClick={copySql}>{copied ? 'Copied!' : 'Copy SQL'}</button></div>
-              <pre className="code-scroll max-h-480px w-full min-w-0 max-w-full overflow-auto p-5 font-mono text-xs leading-6 text-paper/80" tabIndex={0}><code>{INSTALL_SQL}</code></pre>
-            </div>
+          <div className="flex flex-wrap items-center gap-x-4.5 gap-y-1.5 border-t border-line bg-deep px-4.5 py-2.5 text-xs text-muted">
+            <span><kbd className="kbd">↑</kbd> <kbd className="kbd">↓</kbd> move</span>
+            <span><kbd className="kbd">Tab</kbd> complete</span>
+            <span><kbd className="kbd">Enter</kbd> open</span>
+            <span className="hidden md:inline"><kbd className="kbd">Esc</kbd> clear</span>
+            <span className="hidden md:inline"><kbd className="kbd">/</kbd> focus</span>
+            <span role="status" className={`w-full min-w-0 break-anywhere md:ml-auto md:w-auto ${error ? 'text-danger' : 'text-mint'}`}><span key={note.count} className="flash">{status}</span></span>
           </div>
-        </section>
+        </form>
+
+        <BangSettings api={API_BASE} onSave={() => setBangRevision(current => current + 1)} onTry={fill} />
+        <Install />
       </main>
 
-      <footer className="border-t border-line bg-paper px-6 py-6 text-center text-xs text-muted">Rich suggestions, custom bangs, DNS, IP, and crypto answers.</footer>
-      <span className="sr-only" aria-live="polite">{copied ? 'SQL copied to clipboard' : ''}</span>
+      <footer className="mt-20 border-t border-line p-6 text-center font-sans text-13px leading-relaxed text-muted">
+        Rich suggestions, custom bangs, DNS, IP, and crypto answers.
+        <div className="mt-3 flex flex-col items-center gap-2">
+          <a href="https://www.themoviedb.org/" target="_blank" rel="noreferrer"><img src="/icons/tmdb.svg" alt="TMDB" className="h-4 w-auto" /></a>
+          <span>This product uses the TMDB API but is not endorsed or certified by TMDB.</span>
+        </div>
+      </footer>
     </div>
   )
 }

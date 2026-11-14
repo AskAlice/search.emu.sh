@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "npm run build && tsc -p test/tsconfig.test.json && cross-env TS_NODE_FILES=true tap --ts test/**/*.test.ts",
-    "start": "fastify start -l info -p 3006 -a 0.0.0.0 dist/plugin.js",
+    "start": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --env-file-if-exists=.env.secrets.local node_modules/fastify-cli/cli.js start -l info -p 3006 -a 0.0.0.0 dist/plugin.js",
     "predeploy": "npm run build",
     "production": "cross-env NODE_ENV=production npm start",
     "build:ts": "tsc",
@@ -18,8 +18,9 @@
     "build": "npm run build:ts && npm run build:web",
     "build:web": "tsc -p tsconfig.web.json && vite build",
     "vercel-build": "npm run build",
-    "dev:api": "cross-env PORT=3006 fastify start -w -l info -p 3006 -a 0.0.0.0 dist/plugin.js",
-    "dev:web": "vite"
+    "dev:api": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --env-file-if-exists=.env.secrets.local node_modules/fastify-cli/cli.js start -w -l info -p 3006 -a 0.0.0.0 dist/plugin.js",
+    "dev:web": "vite",
+    "test:installer": "python3 -m unittest discover -s test/scripts -p 'test_*.py' -v"
   },
   "keywords": [],
   "author": "",

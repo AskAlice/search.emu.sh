@@ -1,3 +1,5 @@
+import { mediaSuggestions } from './providers/media';
+import { cachedGet } from './providers/http';
 import { EntityInfo } from './proto/entity_info_pb';
 import { chromiumIcon, decodeSuggestTemplate } from './chromium/icons';
 import axios from "axios";
@@ -13,7 +15,13 @@ export interface RichSuggestion {
   type?: string;
   relevance?: number;
   suggestTemplate?: string;
-  source?: 'google';
+  source?: 'google' | 'brave';
+  entityInfo?: string;
+  subtypes?: Array<number | string>;
+  dominantColor?: string;
+  searchParameters?: string;
+  categories?: number[];
+  website?: string;
 }
 
 const TIMEOUT = 5000;
@@ -159,7 +167,7 @@ async function rdap(domain: string, signal?: AbortSignal): Promise<RichSuggestio
   const url = domain.toLowerCase().endsWith(".sh")
     ? `https://rdap.identitydigital.services/rdap/domain/${encodeURIComponent(domain)}`
     : `https://rdap.org/domain/${encodeURIComponent(domain)}`;
-  const { data } = await axios.get(url, { timeout: TIMEOUT, signal });
+  const data = await cachedGet(url, 3600, { timeout: TIMEOUT, signal });
   const registrarEntity = data.entities?.find((entity: any) => entity.roles?.includes("registrar"));
   const registrar = registrarEntity?.vcardArray?.[1]?.find((field: any[]) => field[0] === "fn")?.[3];
   const expiry = data.events?.find((event: any) => event.eventAction === "expiration")?.eventDate;
@@ -279,10 +287,10 @@ async function command(q: string, signal?: AbortSignal): Promise<RichSuggestion[
   }
   if (name === "gh") {
     if (!/^[^/\s]+\/[^/\s]+$/.test(arg)) return [];
-    const { data } = await axios.get(`https://api.github.com/repos/${arg.split("/").map(encodeURIComponent).join("/")}`, { timeout: TIMEOUT, signal });
+    const data = await cachedGet(`https://api.github.com/repos/${arg.split("/").map(encodeURIComponent).join("/")}`, 600, { timeout: TIMEOUT, signal });
     return [redirect(`https://github.com/${arg}`, data.full_name || arg, `${data.description || "GitHub repository"} · Stars: ${data.stargazers_count ?? 0}`)];
   }
-  const { data } = await axios.get(`https://registry.npmjs.org/${encodeURIComponent(arg)}/latest`, { timeout: TIMEOUT, signal });
+  const data = await cachedGet(`https://registry.npmjs.org/${encodeURIComponent(arg)}/latest`, 600, { timeout: TIMEOUT, signal });
   return [redirect(`https://www.npmjs.com/package/${arg.split("/").map(encodeURIComponent).join("/")}`, data.name || arg, `${data.version || "latest"} · ${data.description || "npm package"}`)];
 }
 
@@ -310,6 +318,12 @@ export function parseGoogleSuggestions(raw: string, query: string, bangSlug?: st
       annotation,
       image: template?.image?.url || entity?.imageUrl || meta.zs || meta.i,
       suggestTemplate: template ? encoded : undefined,
+      entityInfo: entity ? meta['google:entityinfo'] : undefined,
+      subtypes: chrome && Array.isArray(payload[4]?.['google:suggestsubtypes']?.[index]) ? payload[4]['google:suggestsubtypes'][index] : [],
+      dominantColor: template?.image?.dominantColor || entity?.dominantColor,
+      searchParameters: entity?.suggestSearchParameters,
+      categories: entity?.category,
+      website: entity?.websiteUri,
       source: 'google' as const,
       type: explicitType || (entity || meta.zi || meta.zs ? (isPerson ? 'PERSON' : 'ENTITY') : 'QUERY'),
       relevance: chrome ? payload[4]?.['google:suggestrelevance']?.[index] || 1300 - index : meta.zi || meta.zs ? 7500 - index : 1300 - index,
@@ -317,10 +331,25 @@ export function parseGoogleSuggestions(raw: string, query: string, bangSlug?: st
   });
 }
 
-export async function getGoogleRichSuggestions(query: string, bangSlug?: string, signal?: AbortSignal): Promise<RichSuggestion[]> {
+// Google returns entity metadata only to Chrome-like clients; axios's default User-Agent gets plain queries.
+const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36';
+
+export function googleSuggestUrl(query: string, options: Record<string, unknown> = {}, cursorOffset = 0): string {
+  const params = new URLSearchParams();
+  params.set('client', 'chrome-omni');
+  // Chrome sends this; without it Google omits entity rows, images and annotations ("Troy — 2004 film").
+  params.set('gs_ri', 'chrome-ext-ansg');
+  params.set('hl', typeof options.hl === 'string' && /^[a-z]{2,3}(?:[-_][a-z0-9]{2,8})*$/i.test(options.hl) ? options.hl : 'en');
+  if (typeof options.gl === 'string' && /^[a-z]{2}$/i.test(options.gl)) params.set('gl', options.gl);
+  if (typeof options.cp === 'string' && /^\d{1,6}$/.test(options.cp)) params.set('cp', String(Math.min(query.length, Math.max(0, Number(options.cp) - cursorOffset))));
+  params.set('q', query);
+  return 'https://www.google.com/complete/search?' + params;
+}
+
+export async function getGoogleRichSuggestions(query: string, bangSlug?: string, signal?: AbortSignal, options: Record<string, unknown> = {}, cursorOffset = 0): Promise<RichSuggestion[]> {
   if (!query.trim()) return [];
   try {
-    const { data } = await axios.get(`https://www.google.com/complete/search?client=chrome-omni&hl=en&q=${encodeURIComponent(query)}`, { timeout: 750, signal, responseType: 'text' });
+    const data = await cachedGet(googleSuggestUrl(query, options, cursorOffset), 300, { timeout: 750, signal, responseType: 'text', headers: { 'User-Agent': CHROME_UA } });
     return parseGoogleSuggestions(String(data), query, bangSlug);
   } catch { return []; }
 }
@@ -330,6 +359,8 @@ export async function getRichSuggestions(query: string, signal?: AbortSignal): P
   if (!q) return [];
   try {
     if (/^![a-z]*$/i.test(q)) return discovery(q.slice(1).toLowerCase());
+    const media = q.match(/^(movie|tv)\s+(\S.*)$/i);
+    if (media) return await mediaSuggestions(media[1].toLowerCase() as 'movie' | 'tv', media[2], signal);
     const commandResult = await command(q, signal);
     if (commandResult) return commandResult;
 
@@ -345,7 +376,7 @@ export async function getRichSuggestions(query: string, signal?: AbortSignal): P
     match = q.match(/^(CVE-\d{4}-\d{4,})$/i);
     if (match) {
       const id = match[1].toUpperCase();
-      const { data } = await axios.get(`https://api.osv.dev/v1/vulns/${id}`, { timeout: TIMEOUT, signal });
+      const data = await cachedGet(`https://api.osv.dev/v1/vulns/${encodeURIComponent(id)}`, 3600, { timeout: TIMEOUT, signal });
       const details = String(data.details || data.summary || "OSV vulnerability record").replace(/\s+/g, " ").slice(0, 300);
       return [redirect(`https://nvd.nist.gov/vuln/detail/${id}`, `${id}: ${data.summary || "Vulnerability"}`, details)];
     }
@@ -357,7 +388,7 @@ export async function getRichSuggestions(query: string, signal?: AbortSignal): P
       if (/^[a-z]{3}$/i.test(match[2]) && /^[a-z]{3}$/i.test(match[3])) {
         const from = match[2].toUpperCase();
         const to = match[3].toUpperCase();
-        const { data } = await axios.get(`https://api.frankfurter.app/latest?amount=${amount}&from=${from}&to=${to}`, { timeout: TIMEOUT, signal });
+        const data = await cachedGet(`https://api.frankfurter.app/latest?amount=${amount}&from=${from}&to=${to}`, 3600, { timeout: TIMEOUT, signal });
         if (typeof data.rates?.[to] !== "number") return [];
         return [answer(q, `${amount} ${from} = ${data.rates[to]} ${to}`, `Frankfurter exchange rate · ${data.date || "latest"}`)];
       }
