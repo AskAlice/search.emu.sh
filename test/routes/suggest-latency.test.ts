@@ -41,7 +41,7 @@ t.test('a stalled rich provider does not block ordinary autocomplete', async t =
     const payload = JSON.parse(result.body.replace(/^\)\]\}'\n/, ''));
     t.equal(payload[0], 'hello');
     t.ok(payload[1].includes('hello world'));
-    t.equal(result.headers['cache-control'], 'private, no-store');
+    t.equal(result.headers['cache-control'], 'public, max-age=0, s-maxage=60, stale-while-revalidate=300');
   }
   (rich as any).getRichSuggestions = async () => [];
   process.env.CRYPTOCOMPARE_KEY = 'test-only';

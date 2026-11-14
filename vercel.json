@@ -30,6 +30,19 @@
       "continue": true
     },
     {
+      "src": "^/suggest$",
+      "has": [{ "type": "cookie", "key": "emu_bangs" }],
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-emu-bangs" },
+          "args": "1"
+        }
+      ],
+      "continue": true
+    },
+    {
       "src": "/(bangs|search|suggest|osd.xml|opensearch.xml|color/.*|icon/.*)",
       "dest": "/src/vercel.ts"
     },
