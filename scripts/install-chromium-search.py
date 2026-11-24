@@ -30,6 +30,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import socket
 import sqlite3
 import subprocess
 import sys
@@ -73,7 +74,6 @@ WINDOWS_BROWSERS = {
     'vivaldi': 'Vivaldi/User Data',
 }
 BROWSERS = {**MAC_BROWSERS, **LINUX_BROWSERS, **WINDOWS_BROWSERS}
-EXECUTABLE = re.compile(r'(?:^|[\s/\\])(?:chrome|google-chrome|chromium(?:-browser)?|brave(?:-browser|-origin)?|msedge|microsoft-edge|vivaldi|opera|arc)(?:-(?:stable|beta|dev|unstable|nightly|canary))?(?:\.exe)?(?=$|[\s/\\])', re.I)
 
 
 def profile_roots(platform=None, home=None, environ=None):
@@ -104,23 +104,46 @@ def default_backup_root():
     return Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local/share'))) / 'emu-search/backups'
 
 
-APP = re.compile(r'(?:Google Chrome|Chromium|Brave Browser|Brave Origin|Brave-Browser|Brave-Origin|Microsoft Edge|Vivaldi|Arc|Opera GX|Opera)(?:\.app| Helper| Beta| Canary| Dev| Nightly| Origin|/|$)', re.I)
 BASE = 'https://search.emu.sh'
 IDENTITY = ('id', 'short_name', 'keyword', 'url', 'suggest_url', 'sync_guid', 'originating_url', 'favicon_url')
 
 
-def browser_processes(db, listing):
-    """Include browser helpers, profile-specific crash handlers and descendants."""
+def parse_listing(listing):
     rows = []
     for line in listing.splitlines():
         parts = line.strip().split(None, 2)
-        if len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit():
-            rows.append((int(parts[0]), int(parts[1]), parts[2]))
-    profile_root = str(db.parent.parent)
-    found = {pid for pid, _, cmd in rows if pid != os.getpid() and (APP.search(cmd) or EXECUTABLE.search(cmd) or profile_root.casefold() in cmd.casefold())}
+        if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+            rows.append((int(parts[0]), int(parts[1]), parts[2] if len(parts) == 3 else ''))
+    return rows
+
+
+def lock_owner(db):
+    """Chromium marks a user-data folder in use with SingletonLock -> "host-pid" (macOS and Linux)."""
+    for root in (db.parent, db.parent.parent):
+        with contextlib.suppress(OSError):
+            host, _, pid = os.readlink(root / 'SingletonLock').rpartition('-')
+            if host == socket.gethostname() and pid.isdigit():
+                return int(pid)
+    return None
+
+
+def browser_processes(db, listing):
+    """Processes of the browser that owns this profile, plus their descendants. Other browsers don't
+    block: the owner is found from its SingletonLock, from processes that name the user-data folder
+    (crash handlers, profile flags) or flatpak app id, and file_holders() catches anything holding Web Data."""
+    rows = parse_listing(listing)
+    alive = {pid for pid, _, _ in rows}
+    needles = [str(db.parent.parent).casefold()]
+    flatpak = re.search(r'[/\\]\.var[/\\]app[/\\]([^/\\]+)', str(db))
+    if flatpak:  # sandboxed: PIDs in the lock are namespaced, but bwrap/flatpak commands name the app id
+        needles.append(flatpak.group(1).casefold())
+    found = {pid for pid, _, cmd in rows if any(needle in cmd.casefold() for needle in needles)}
+    owner = None if flatpak else lock_owner(db)
+    if owner in alive:
+        found.add(owner)
+    found -= {os.getpid(), os.getppid()}
     while True:
-        descendants = {pid for pid, ppid, _ in rows if ppid in found and pid != os.getpid()}
-        expanded = found | descendants
+        expanded = found | {pid for pid, ppid, _ in rows if ppid in found and pid != os.getpid()}
         if expanded == found:
             return sorted(found)
         found = expanded
@@ -180,14 +203,35 @@ def windows_file_holders(files):
         checked(api.RmEndSession(handle))
 
 
+def proc_file_holders(files, proc='/proc'):
+    """Linux: read every process's open files from /proc (lsof does the same, but much slower)."""
+    targets = {os.path.realpath(path) for path in files}
+    holders = []
+    for entry in os.scandir(proc):
+        if not entry.name.isdigit():
+            continue
+        try:
+            fds = list(os.scandir(os.path.join(entry.path, 'fd')))
+        except OSError:
+            continue  # exited, or another user's process (it cannot write our profile anyway)
+        for fd in fds:
+            with contextlib.suppress(OSError):
+                if os.readlink(fd.path) in targets:
+                    holders.append(int(entry.name))
+                    break
+    return holders
+
+
 def file_holders(db):
     files = [p for p in [db, Path(str(db) + '-wal'), Path(str(db) + '-shm'), Path(str(db) + '-journal')] if p.exists()]
     if sys.platform == 'win32':
         return windows_file_holders(files)
+    if sys.platform.startswith('linux') and os.path.isdir('/proc/self/fd'):
+        return proc_file_holders(files)
     lsof = shutil.which('lsof')
     if not lsof:
         raise RuntimeError('Install lsof before running the installer (for example, apt install lsof or dnf install lsof).')
-    result = subprocess.run([lsof, '-t', '--', *map(str, files)], capture_output=True, text=True, timeout=15)
+    result = subprocess.run([lsof, '-t', '-n', '-P', '--', *map(str, files)], capture_output=True, text=True, timeout=60)
     if result.returncode not in (0, 1) or result.stderr.strip():
         raise RuntimeError('Could not establish that the database is unused (lsof failed).')
     return [int(pid) for pid in result.stdout.split()]
@@ -196,7 +240,7 @@ def file_holders(db):
 def assert_browser_closed(db):
     pids = browser_processes(db, process_listing())
     if pids:
-        raise RuntimeError('Quit Chromium browsers and their helpers first (PIDs: ' + ', '.join(map(str, pids)) + '). No process was killed.')
+        raise RuntimeError('Quit the browser that uses this profile first (PIDs: ' + ', '.join(map(str, pids)) + '). No process was killed.')
     holders = [pid for pid in file_holders(db) if pid != os.getpid()]
     if holders:
         raise RuntimeError('Database is open in another process: ' + ', '.join(map(str, holders)))
@@ -534,24 +578,17 @@ def manual_db():
 
 
 def running_browsers(db):
-    """Names of the processes that block the install, or [] when it is safe to continue."""
-    listing = process_listing()
-    commands = {int(parts[0]): parts[2] for parts in (line.strip().split(None, 2) for line in listing.splitlines()) if len(parts) == 3 and parts[0].isdigit()}
-    pids = browser_processes(db, listing) + [pid for pid in file_holders(db) if pid != os.getpid()]
-    names, helpers = {}, 0
-    for pid in pids:
-        match = APP.search(commands.get(pid, '')) or EXECUTABLE.search(commands.get(pid, ''))
-        if not match:
-            helpers += 1
-            continue
-        name = re.sub(r'(\.app|\.exe| Helper)$', '', match.group(0).strip(' /\\'), flags=re.I)
-        names.setdefault(name.casefold(), name)
-    return pids, sorted(names.values(), key=str.casefold) + ([f'{helpers} helper processes'] if helpers else [])
+    """PIDs that block the install, or [] when it is safe to continue."""
+    return sorted(set(browser_processes(db, process_listing())) | {pid for pid in file_holders(db) if pid != os.getpid()})
 
 
 def close_gracefully(pids):
-    """Ask browsers to quit the way closing their window does; they restore tabs on next start."""
+    """Ask the browser to quit the way closing its window does; it restores tabs on next start.
+    Only main processes are signalled (helpers carry --type=) so renderers are not killed mid-shutdown."""
+    commands = {pid: cmd for pid, _, cmd in parse_listing(process_listing())}
     for pid in pids:
+        if '--type=' in commands.get(pid, '--type='):
+            continue
         with contextlib.suppress(OSError, subprocess.SubprocessError):
             if sys.platform == 'win32':
                 subprocess.run(['taskkill', '/PID', str(pid)], capture_output=True, timeout=10)
@@ -560,21 +597,21 @@ def close_gracefully(pids):
                 os.kill(pid, signal.SIGTERM)
 
 
-def wait_for_close(db):
+def wait_for_close(db, name='The browser'):
     while True:
-        pids, names = running_browsers(db)
+        pids = running_browsers(db)
         if not pids:
             return True
-        print(f'\nStill running: {", ".join(names)} ({len(pids)} processes).')
-        print('Quit them fully, including background or tray apps, so the database can be edited safely.')
-        answer = input('Enter = check again, c = close them for me, q = cancel: ').strip().lower()
+        print(f'\n{name} is still running ({len(pids)} processes use {db.parent.parent}).')
+        print('Quit it fully, including background or tray apps, so the database can be edited safely. Other browsers can stay open.')
+        answer = input('Enter = check again, c = close it for me, q = cancel: ').strip().lower()
         if answer in ('q', 'quit'):
             return False
         if answer == 'c':
             close_gracefully(pids)
             for _ in range(20):
                 time.sleep(0.5)
-                if not running_browsers(db)[0]:
+                if not running_browsers(db):
                     break
 
 
@@ -591,7 +628,7 @@ def interactive_db():
         print(FIREFOX_STEPS)
         return None
     if options[selection] == OTHER:
-        db = manual_db()
+        db, name = manual_db(), 'The browser'
         if db is None:
             return None
     else:
@@ -601,11 +638,11 @@ def interactive_db():
         selection = menu_choice(f'2 / Select {label(browser)} profile', choices)
         if selection is None:
             return None
-        db = manual_db() if choices[selection] == OTHER else available[selection][1]
+        db, name = manual_db() if choices[selection] == OTHER else available[selection][1], label(browser)
         if db is None:
             return None
     print(f'Database: {db}')
-    if not wait_for_close(db):
+    if not wait_for_close(db, name):
         return None
     print('Browsers are closed. Making a verified backup and installing...')
     return db.resolve(strict=True)

@@ -136,7 +136,8 @@ class InstallerTests(unittest.TestCase):
 103 1 brave_crashpad_handler --database={self.db.parent.parent}/Crashpad
 200 1 /Applications/Slack.app/Contents/MacOS/Slack
 '''
-        self.assertEqual(installer.browser_processes(self.db,listing),[100,101,102,103])
+        with patch.object(installer,'lock_owner',return_value=100):
+            self.assertEqual(installer.browser_processes(self.db,listing),[100,101,102,103])
         profiles=list(installer.discover([(name, self.root / relative) for name, relative in installer.MAC_BROWSERS.items()]))
         self.assertEqual(profiles[0][0:2],('brave-origin','Default'))
 
@@ -155,27 +156,42 @@ class PlatformTests(unittest.TestCase):
         self.assertIn(('brave-origin', Path('/local/BraveSoftware/Brave-Origin/User Data')), roots)
         self.assertIn(('opera', Path('/roaming/Opera Software/Opera Stable')), roots)
 
-    def test_executable_names_helpers_and_descendants(self):
+    def test_other_browsers_do_not_block(self):
         db = Path('/profiles/Default/Web Data')
         listing = '''501 1 chrome.exe --type=utility
-502 501 crashpad_handler.exe
 503 1 /opt/brave.com/brave-origin/brave --type=renderer
 504 1 /usr/bin/chromium-browser
-505 1 /opt/microsoft/msedge/msedge
-506 1 unrelated_app
+505 1 /usr/bin/plasma-browser-integration-host chrome-extension://abc/
 '''
-        self.assertEqual(installer.browser_processes(db, listing), [501,502,503,504,505])
+        with patch.object(installer,'lock_owner',return_value=None):
+            self.assertEqual(installer.browser_processes(db, listing), [])
+        with patch.object(installer,'lock_owner',return_value=999):  # stale lock: PID no longer running
+            self.assertEqual(installer.browser_processes(db, listing), [])
+
+    def test_lock_owner_reads_singleton_lock_for_this_host(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); (root/'Default').mkdir()
+            os.symlink(f'{installer.socket.gethostname()}-4242', root/'SingletonLock')
+            self.assertEqual(installer.lock_owner(root/'Default/Web Data'), 4242)
+            (root/'SingletonLock').unlink(); os.symlink('other-host-4242', root/'SingletonLock')
+            self.assertIsNone(installer.lock_owner(root/'Default/Web Data'))
+
+    def test_flatpak_uses_app_id_not_namespaced_lock(self):
+        db = Path('/home/u/.var/app/com.google.Chrome/config/google-chrome/Default/Web Data')
+        listing = '2 0 kthreadd\n700 1 bwrap --args 40 com.google.Chrome\n701 700 /app/extra/chrome --type=renderer\n'
+        with patch.object(installer,'lock_owner',return_value=2) as lock:
+            self.assertEqual(installer.browser_processes(db, listing), [700,701]); lock.assert_not_called()
 
     def test_windows_process_name_survives_missing_command_line(self):
         from types import SimpleNamespace
         payload = json.dumps([{'ProcessId': 501, 'ParentProcessId': 1, 'Name':'brave.exe', 'CommandLine': None}])
         with patch.object(installer.sys, 'platform', 'win32'), patch.object(installer.subprocess, 'run', return_value=SimpleNamespace(stdout=payload)):
             listing = installer.process_listing()
-        self.assertEqual(installer.browser_processes(Path('/profiles/Default/Web Data'), listing), [501])
+        self.assertEqual(installer.parse_listing(listing)[0][:2], (501, 1))
 
     def test_guard_refuses_process_and_file_holders(self):
         db = Path('/profiles/Default/Web Data')
-        with patch.object(installer, 'process_listing', return_value='501 1 brave.exe'), patch.object(installer, 'file_holders') as holders:
+        with patch.object(installer, 'process_listing', return_value='501 1 brave.exe --user-data-dir=/profiles'), patch.object(installer, 'file_holders') as holders:
             with self.assertRaisesRegex(RuntimeError, '501'):installer.assert_browser_closed(db)
             holders.assert_not_called()
         with patch.object(installer, 'process_listing', return_value=''), patch.object(installer, 'file_holders', return_value=[os.getpid(), 502]):
@@ -183,15 +199,23 @@ class PlatformTests(unittest.TestCase):
         with patch.object(installer, 'process_listing', return_value=''), patch.object(installer, 'file_holders', return_value=[os.getpid()]):
             installer.assert_browser_closed(db)
 
+    def test_proc_file_holders_finds_open_database(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); db = root/'Web Data'; db.touch(); other = root/'other'; other.touch()
+            for pid, target in [('10', db), ('11', other)]:
+                (root/'proc'/pid/'fd').mkdir(parents=True); os.symlink(target, root/'proc'/pid/'fd'/'3')
+            (root/'proc'/'self').mkdir()
+            self.assertEqual(installer.proc_file_holders([db], str(root/'proc')), [10])
+
     def test_native_holder_dispatch_and_fail_closed(self):
         from types import SimpleNamespace
         with tempfile.TemporaryDirectory() as directory:
             db = Path(directory) / 'Web Data'; db.touch()
             with patch.object(installer.sys, 'platform', 'win32'), patch.object(installer, 'windows_file_holders', return_value=[501]) as native:
                 self.assertEqual(installer.file_holders(db), [501]);native.assert_called_once_with([db])
-            with patch.object(installer.sys, 'platform', 'linux'), patch.object(installer.shutil, 'which', return_value=None):
+            with patch.object(installer.sys, 'platform', 'darwin'), patch.object(installer.shutil, 'which', return_value=None):
                 with self.assertRaisesRegex(RuntimeError, 'Install lsof'):installer.file_holders(db)
-            with patch.object(installer.sys, 'platform', 'linux'), patch.object(installer.shutil, 'which', return_value='/usr/bin/lsof'), patch.object(installer.subprocess, 'run', return_value=SimpleNamespace(returncode=1, stderr='denied', stdout='')):
+            with patch.object(installer.sys, 'platform', 'darwin'), patch.object(installer.shutil, 'which', return_value='/usr/bin/lsof'), patch.object(installer.subprocess, 'run', return_value=SimpleNamespace(returncode=1, stderr='denied', stdout='')):
                 with self.assertRaisesRegex(RuntimeError, 'lsof failed'):installer.file_holders(db)
 
     def test_opera_direct_profile_and_ambiguous_install(self):
@@ -240,16 +264,19 @@ class InteractiveTests(unittest.TestCase):
 
     def test_wait_for_close_rechecks_closes_and_cancels(self):
         db = Path('/x/Default/Web Data')
-        with patch.object(installer,'running_browsers',side_effect=[([5],['Brave']),([5],['Brave']),([],[]),([],[])]), patch('builtins.input',side_effect=['c']), patch.object(installer,'close_gracefully') as close, patch.object(installer.time,'sleep'), patch('builtins.print'):
+        with patch.object(installer,'running_browsers',side_effect=[[5],[5],[],[]]), patch('builtins.input',side_effect=['c']), patch.object(installer,'close_gracefully') as close, patch.object(installer.time,'sleep'), patch('builtins.print'):
             self.assertTrue(installer.wait_for_close(db)); close.assert_called_once_with([5])
-        with patch.object(installer,'running_browsers',return_value=([5],['Brave'])), patch('builtins.input',return_value='q'), patch('builtins.print'):
+        with patch.object(installer,'running_browsers',return_value=[5]), patch('builtins.input',return_value='q'), patch('builtins.print'):
             self.assertFalse(installer.wait_for_close(db))
 
-    def test_running_browsers_names_processes(self):
-        listing = '10 1 /Applications/Brave Browser.app/Contents/MacOS/Brave Browser\n11 10 /Applications/Brave Browser.app/Contents/Frameworks/Brave Browser Helper\n'
-        with patch.object(installer,'process_listing',return_value=listing), patch.object(installer,'file_holders',return_value=[]):
-            pids, names = installer.running_browsers(Path('/p/Default/Web Data'))
-        self.assertEqual(pids,[10,11]); self.assertEqual(names,['Brave Browser'])
+    def test_running_browsers_merges_owner_and_file_holders(self):
+        with patch.object(installer,'process_listing',return_value='10 1 x --user-data-dir=/p\n'), patch.object(installer,'file_holders',return_value=[12, os.getpid()]):
+            self.assertEqual(installer.running_browsers(Path('/p/Default/Web Data')),[10,12])
+
+    def test_close_gracefully_signals_only_main_processes(self):
+        with patch.object(installer,'process_listing',return_value='10 1 /opt/brave\n11 10 /opt/brave --type=renderer\n'), patch.object(installer.sys,'platform','linux'), patch.object(installer.os,'kill') as kill:
+            installer.close_gracefully([10,11,99])
+        self.assertEqual([call.args[0] for call in kill.call_args_list],[10])
 
     def test_arrow_key_menu_and_cancel(self):
         from contextlib import nullcontext
