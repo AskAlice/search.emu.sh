@@ -212,9 +212,9 @@ class InteractiveTests(unittest.TestCase):
             db2 = Path(directory)/'flatpak/Default/Web Data'
             for db in (db1,db2):db.parent.mkdir(parents=True);db.touch()
             profiles = [('chrome','Default',db1), ('brave','Default',db1), ('brave','Default',db2)]
-            with patch.object(installer.sys.stdin,'isatty',return_value=True), patch.object(installer.sys.stdout,'isatty',return_value=True), patch.object(installer,'discover',return_value=iter(profiles)), patch.object(installer,'menu_choice',side_effect=[0,1]) as menu, patch('builtins.print'):
+            with patch.object(installer.sys.stdin,'isatty',return_value=True), patch.object(installer.sys.stdout,'isatty',return_value=True), patch.object(installer,'discover',return_value=iter(profiles)), patch.object(installer,'menu_choice',side_effect=[0,1]) as menu, patch.object(installer,'wait_for_close',return_value=True), patch('builtins.print'):
                 self.assertEqual(installer.interactive_db(), db2)
-                self.assertEqual(menu.call_args_list[0].args[1], ['brave','chrome'])
+                self.assertEqual(menu.call_args_list[0].args[1], ['Brave','Chrome',installer.FIREFOX,installer.OTHER])
                 self.assertIn(str(db2.parent),menu.call_args_list[1].args[1][1])
 
     def test_cancel_at_either_stage(self):
@@ -223,12 +223,33 @@ class InteractiveTests(unittest.TestCase):
             with self.subTest(choices=choices), patch.object(installer.sys.stdin,'isatty',return_value=True), patch.object(installer.sys.stdout,'isatty',return_value=True), patch.object(installer,'discover',return_value=iter(profiles)), patch.object(installer,'menu_choice',side_effect=choices):
                 self.assertIsNone(installer.interactive_db())
 
-    def test_missing_terminal_or_profiles_exits_without_prompt(self):
-        with patch.object(installer.sys.stdin,'isatty',return_value=False), patch.object(installer,'menu_choice') as menu:
+    def test_missing_terminal_exits_without_prompt(self):
+        with patch.object(installer,'attach_terminal',return_value=False), patch.object(installer,'menu_choice') as menu:
             with self.assertRaisesRegex(RuntimeError,'needs a terminal'):installer.interactive_db()
             menu.assert_not_called()
-        with patch.object(installer.sys.stdin,'isatty',return_value=True), patch.object(installer.sys.stdout,'isatty',return_value=True), patch.object(installer,'discover',return_value=iter([])):
-            with self.assertRaisesRegex(RuntimeError,'No Chromium profiles'):installer.interactive_db()
+
+    def test_no_profiles_offers_firefox_steps_and_manual_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db = Path(directory)/'Profile 3/Web Data'; db.parent.mkdir(); db.touch()
+            with patch.object(installer,'attach_terminal',return_value=True), patch.object(installer.sys.stdout,'isatty',return_value=True), patch.object(installer,'discover',return_value=iter([])), patch.object(installer,'menu_choice',return_value=0) as menu, patch('builtins.print') as out:
+                self.assertIsNone(installer.interactive_db())
+                self.assertEqual(menu.call_args.args[1],[installer.FIREFOX,installer.OTHER])
+                self.assertIn('about:preferences#search',out.call_args_list[-1].args[0])
+            with patch.object(installer,'attach_terminal',return_value=True), patch.object(installer.sys.stdout,'isatty',return_value=True), patch.object(installer,'discover',return_value=iter([])), patch.object(installer,'menu_choice',return_value=1), patch('builtins.input',side_effect=['/nope', f'"{db.parent}"']), patch.object(installer,'wait_for_close',return_value=True), patch('builtins.print'):
+                self.assertEqual(installer.interactive_db(), db.resolve())
+
+    def test_wait_for_close_rechecks_closes_and_cancels(self):
+        db = Path('/x/Default/Web Data')
+        with patch.object(installer,'running_browsers',side_effect=[([5],['Brave']),([5],['Brave']),([],[]),([],[])]), patch('builtins.input',side_effect=['c']), patch.object(installer,'close_gracefully') as close, patch.object(installer.time,'sleep'), patch('builtins.print'):
+            self.assertTrue(installer.wait_for_close(db)); close.assert_called_once_with([5])
+        with patch.object(installer,'running_browsers',return_value=([5],['Brave'])), patch('builtins.input',return_value='q'), patch('builtins.print'):
+            self.assertFalse(installer.wait_for_close(db))
+
+    def test_running_browsers_names_processes(self):
+        listing = '10 1 /Applications/Brave Browser.app/Contents/MacOS/Brave Browser\n11 10 /Applications/Brave Browser.app/Contents/Frameworks/Brave Browser Helper\n'
+        with patch.object(installer,'process_listing',return_value=listing), patch.object(installer,'file_holders',return_value=[]):
+            pids, names = installer.running_browsers(Path('/p/Default/Web Data'))
+        self.assertEqual(pids,[10,11]); self.assertEqual(names,['Brave Browser'])
 
     def test_arrow_key_menu_and_cancel(self):
         from contextlib import nullcontext

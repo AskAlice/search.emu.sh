@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Install emu search in a closed Chromium profile on macOS, Linux or Windows.
 
+One-liner setup screen, no clone (Windows PowerShell: `irm URL | py -3 -`):
+    curl -fsSL https://raw.githubusercontent.com/AskAlice/search.emu.sh/master/scripts/install-chromium-search.py | python3 -
+
 Usage (from the repository root, with Python 3 installed):
     python3 scripts/install-chromium-search.py  # interactive browser/profile picker
     python3 scripts/install-chromium-search.py --list
@@ -30,7 +33,10 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import time
 import uuid
+
+SCRIPT_URL = 'https://raw.githubusercontent.com/AskAlice/search.emu.sh/master/scripts/install-chromium-search.py'
 
 MAC_BROWSERS = {
     'chrome': 'Google/Chrome', 'chrome-beta': 'Google/Chrome Beta',
@@ -43,6 +49,7 @@ MAC_BROWSERS = {
     'edge': 'Microsoft Edge', 'edge-beta': 'Microsoft Edge Beta',
     'edge-dev': 'Microsoft Edge Dev', 'edge-canary': 'Microsoft Edge Canary',
     'vivaldi': 'Vivaldi', 'arc': 'Arc/User Data', 'opera': 'com.operasoftware.Opera',
+    'opera-gx': 'com.operasoftware.OperaGX',
 }
 LINUX_BROWSERS = {
     'chrome': 'google-chrome', 'chrome-beta': 'google-chrome-beta',
@@ -76,7 +83,7 @@ def profile_roots(platform=None, home=None, environ=None):
     if platform == 'win32':
         local = Path(env.get('LOCALAPPDATA', str(home / 'AppData/Local')))
         roaming = Path(env.get('APPDATA', str(home / 'AppData/Roaming')))
-        return [(name, local / path) for name, path in WINDOWS_BROWSERS.items()] + [('opera', roaming / 'Opera Software/Opera Stable')]
+        return [(name, local / path) for name, path in WINDOWS_BROWSERS.items()] + [('opera', roaming / 'Opera Software/Opera Stable'), ('opera-gx', roaming / 'Opera Software/Opera GX Stable')]
     if platform.startswith('linux'):
         config = Path(env.get('XDG_CONFIG_HOME', str(home / '.config')))
         if not config.is_absolute():
@@ -97,7 +104,7 @@ def default_backup_root():
     return Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local/share'))) / 'emu-search/backups'
 
 
-APP = re.compile(r'(?:Google Chrome|Chromium|Brave Browser|Brave Origin|Brave-Browser|Brave-Origin|Microsoft Edge|Vivaldi|Arc|Opera)(?:\.app| Helper| Beta| Canary| Dev| Nightly| Origin|/|$)', re.I)
+APP = re.compile(r'(?:Google Chrome|Chromium|Brave Browser|Brave Origin|Brave-Browser|Brave-Origin|Microsoft Edge|Vivaldi|Arc|Opera GX|Opera)(?:\.app| Helper| Beta| Canary| Dev| Nightly| Origin|/|$)', re.I)
 BASE = 'https://search.emu.sh'
 IDENTITY = ('id', 'short_name', 'keyword', 'url', 'suggest_url', 'sync_guid', 'originating_url', 'favicon_url')
 
@@ -268,7 +275,7 @@ def row_at(connection, row_id):
 
 def install(db, keyword, backup_root):
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,32}', keyword):
-        raise ValueError('Keyword must contain 1–32 letters, numbers, underscores or hyphens.')
+        raise ValueError('Keyword must contain 1-32 letters, numbers, underscores or hyphens.')
     directory = backup_root / str(uuid.uuid4())
     with locked(db) as connection:
         columns = {row['name']: row for row in connection.execute('PRAGMA table_info(keywords)')}
@@ -473,24 +480,134 @@ def menu_choice(title, options):
                 selected = len(options) - 1
 
 
+def attach_terminal():
+    """`curl ... | python3 -` makes stdin the download pipe; read keys from the real terminal instead."""
+    if sys.stdin.isatty():
+        return True
+    try:
+        sys.stdin = open('CONIN$' if sys.platform == 'win32' else '/dev/tty', encoding='utf-8')
+    except OSError:
+        return False
+    return sys.stdin.isatty()
+
+
+def label(browser):
+    return browser.replace('-', ' ').title().replace('Gx', 'GX')
+
+
+FIREFOX = 'Firefox'
+OTHER = 'Not listed: enter the profile path myself'
+FIREFOX_STEPS = f"""
+Firefox keeps search engines in a signed file that scripts must not edit, but it
+can add emu itself in a few clicks:
+
+  1. Open {BASE} in Firefox.
+  2. Right-click the address bar and choose "Add emu search".
+     (Older versions: click the ... menu in the address bar, then "Add Search Engine".)
+  3. Open about:preferences#search
+       - Default Search Engine: choose emu search, if you want it as the default.
+       - Search Shortcuts: double-click the Keyword cell next to emu search and type emu
+  4. Type emu then Space in the address bar to search with it.
+"""
+PROFILE_STEPS = """
+Find the profile folder:
+  1. Open the browser and visit its about page:
+       Chrome chrome://version    Brave brave://version    Edge edge://version
+       Vivaldi vivaldi://about    Opera opera://about      Other Chromium: <name>://version
+  2. Copy the "Profile Path" line (Opera calls it "Profile").
+  3. Quit the browser and paste the path below.
+"""
+SETTINGS = 'chrome://settings/searchEngines, brave://settings/searchEngines, edge://settings/searchEngines, opera://settings/searchEngines or vivaldi://settings/search'
+
+
+def manual_db():
+    print(PROFILE_STEPS)
+    while True:
+        answer = input('Profile path (q to cancel): ').strip().strip('"\'')
+        if answer.lower() in ('q', 'quit', ''):
+            return None
+        path = Path(answer).expanduser()
+        db = path if path.name == 'Web Data' else path / 'Web Data'
+        if db.is_file():
+            return db.resolve(strict=True)
+        print(f'No "Web Data" file at {db}. Check the path, or start and quit the browser once so it creates one.')
+
+
+def running_browsers(db):
+    """Names of the processes that block the install, or [] when it is safe to continue."""
+    listing = process_listing()
+    commands = {int(parts[0]): parts[2] for parts in (line.strip().split(None, 2) for line in listing.splitlines()) if len(parts) == 3 and parts[0].isdigit()}
+    pids = browser_processes(db, listing) + [pid for pid in file_holders(db) if pid != os.getpid()]
+    names, helpers = {}, 0
+    for pid in pids:
+        match = APP.search(commands.get(pid, '')) or EXECUTABLE.search(commands.get(pid, ''))
+        if not match:
+            helpers += 1
+            continue
+        name = re.sub(r'(\.app|\.exe| Helper)$', '', match.group(0).strip(' /\\'), flags=re.I)
+        names.setdefault(name.casefold(), name)
+    return pids, sorted(names.values(), key=str.casefold) + ([f'{helpers} helper processes'] if helpers else [])
+
+
+def close_gracefully(pids):
+    """Ask browsers to quit the way closing their window does; they restore tabs on next start."""
+    for pid in pids:
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            if sys.platform == 'win32':
+                subprocess.run(['taskkill', '/PID', str(pid)], capture_output=True, timeout=10)
+            else:
+                import signal
+                os.kill(pid, signal.SIGTERM)
+
+
+def wait_for_close(db):
+    while True:
+        pids, names = running_browsers(db)
+        if not pids:
+            return True
+        print(f'\nStill running: {", ".join(names)} ({len(pids)} processes).')
+        print('Quit them fully, including background or tray apps, so the database can be edited safely.')
+        answer = input('Enter = check again, c = close them for me, q = cancel: ').strip().lower()
+        if answer in ('q', 'quit'):
+            return False
+        if answer == 'c':
+            close_gracefully(pids)
+            for _ in range(20):
+                time.sleep(0.5)
+                if not running_browsers(db)[0]:
+                    break
+
+
 def interactive_db():
-    if not sys.stdin.isatty() or not sys.stdout.isatty():
+    if not attach_terminal() or not sys.stdout.isatty():
         raise RuntimeError('Interactive selection needs a terminal. Use --list, then --browser/--profile or --db for noninteractive use.')
     profiles = list(discover())
-    if not profiles:
-        raise RuntimeError('No Chromium profiles with a Web Data database were found. Start the browser once, quit it, then retry; use --db for a custom profile.')
     browsers = sorted({browser for browser, _, _ in profiles})
-    selection = menu_choice('1 / Select browser', browsers)
+    options = [label(browser) for browser in browsers] + [FIREFOX, OTHER]
+    selection = menu_choice('1 / Select browser' + ('' if profiles else ' (no Chromium profiles were detected)'), options)
     if selection is None:
         return None
-    browser = browsers[selection]
-    available = [(profile, db) for name, profile, db in profiles if name == browser]
-    selection = menu_choice(f'2 / Select {browser} profile', [f'{profile}  |  {db.parent}' for profile, db in available])
-    if selection is None:
+    if options[selection] == FIREFOX:
+        print(FIREFOX_STEPS)
         return None
-    profile, db = available[selection]
-    print(f'Selected {browser} / {profile}\nDatabase: {db}')
-    print('Checking that browsers are closed and preparing a verified backup...')
+    if options[selection] == OTHER:
+        db = manual_db()
+        if db is None:
+            return None
+    else:
+        browser = browsers[selection]
+        available = [(profile, db) for name, profile, db in profiles if name == browser]
+        choices = [f'{profile}  |  {db.parent}' for profile, db in available] + [OTHER]
+        selection = menu_choice(f'2 / Select {label(browser)} profile', choices)
+        if selection is None:
+            return None
+        db = manual_db() if choices[selection] == OTHER else available[selection][1]
+        if db is None:
+            return None
+    print(f'Database: {db}')
+    if not wait_for_close(db):
+        return None
+    print('Browsers are closed. Making a verified backup and installing...')
     return db.resolve(strict=True)
 
 
@@ -517,21 +634,24 @@ def main():
         manifest = restore(args.restore.expanduser().resolve(strict=True), args.backup_dir.expanduser())
         print('Restore completed.' if manifest else 'Already reverted; no changes needed.')
     else:
-        if len(sys.argv) == 1:
+        if not args.db and not args.browser:
             db = interactive_db()
             if db is None:
-                print('Cancelled; no database changes made.')
+                print('No database changes made.')
                 return
         else:
-            if not args.db and not args.browser:
-                parser.error('Choose --browser or --db; use no arguments for the interactive picker.')
             db = args.db.expanduser().resolve(strict=True) if args.db else select_db(args.browser, args.profile)
         manifest = install(db, args.keyword, args.backup_dir.expanduser())
-        print('Provider installed. Open browser search-engine settings to select emu; the default engine was not changed.')
+        print('Provider installed; the default engine was not changed.')
+        print(f'Reopen the browser and type emu then Tab to search. To make it the default, open {SETTINGS}.')
     if manifest:
         print(f'Verified backup and restore manifest: {manifest}')
         launcher = 'py -3' if sys.platform == 'win32' else 'python3'
-        print(f'To undo: {launcher} "{Path(__file__).resolve()}" --restore "{manifest}"')
+        if Path(__file__).is_file():
+            print(f'To undo: {launcher} "{Path(__file__).resolve()}" --restore "{manifest}"')
+        else:  # piped from the web: python3 - (no script file on disk)
+            fetch = f'irm {SCRIPT_URL} | {launcher} -' if sys.platform == 'win32' else f'curl -fsSL {SCRIPT_URL} | {launcher} -'
+            print(f'To undo: {fetch} --restore "{manifest}"')
 
 
 if __name__ == '__main__':
