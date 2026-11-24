@@ -9,7 +9,6 @@ function Suggestion(name: string, aliases: string[], url: string, favicon: strin
 
 const suggestions = [];
 const search = `~QUERYHERE~`;
-suggestions.push(new Suggestion("public", ["pub"], `https://github.com/section/${search}`, "github.png", "Section Github Org Search"));
 suggestions.push(new Suggestion("redirect", [], `${search}`, "redirect.png", "redirect to url"));
 suggestions.push(
   new Suggestion(
