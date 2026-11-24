@@ -44,7 +44,7 @@
       "continue": true
     },
     {
-      "src": "/(bangs|search|suggest|osd.xml|opensearch.xml|color/.*|icon/.*)",
+      "src": "/(bangs|search|suggest|img|osd.xml|opensearch.xml|color/.*|icon/.*)",
       "dest": "/src/vercel.ts"
     },
     {

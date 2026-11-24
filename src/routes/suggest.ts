@@ -10,11 +10,12 @@ import maxmind, { CityResponse } from "maxmind";
 import NodeCache from "node-cache";
 import { existsSync } from "fs";
 import { join } from "path";
+import { omniboxImage } from '../omnibox-image';
 import { ActionInfo, ActionInfo_ActionType, CategoryInfo, CategoryInfo_Category, EntityInfo } from '../proto/entity_info_pb';
 import { getBangs, bangDestination, BANG_COOKIE } from "../suggestions";
 import cryptoAssets from "../suggestions/cryptoAssets.json";
-import { getGoogleRichSuggestions, getRichSuggestions, featureIcon, plainText } from "../rich";
-import { cachedGet, UPSTREAM_TIMEOUT_MS } from "../providers/http";
+import { getGoogleRichSuggestions, getRichSuggestions, featureIcon, commandIcon, plainText } from "../rich";
+import { cachedGet, httpCache, UPSTREAM_TIMEOUT_MS } from "../providers/http";
 const resolver = new doh.DohResolver("https://1.1.1.1/dns-query");
 const bundledGeoDb = join(__dirname, "../GeoLite2-City.mmdb");
 const geoDbPath = existsSync(bundledGeoDb) ? bundledGeoDb : "./src/GeoLite2-City.mmdb";
@@ -42,6 +43,24 @@ const suggestCacheControl = (request, results: unknown[]) =>
   hasBangsCookie(request.headers?.cookie) || request.headers?.[BANGS_VARY] || results.length === 0
     ? PRIVATE_SUGGEST_CACHE
     : PUBLIC_SUGGEST_CACHE;
+
+// Google's own entity info keeps its fields; only the image moves to a URL the omnibox will draw.
+const withOmniboxImage = (encoded: string, host: string) => {
+  const info = EntityInfo.fromBinary(new Uint8Array(Buffer.from(encoded, 'base64')));
+  info.imageUrl = omniboxImage(info.imageUrl, host);
+  return info.toBinary();
+};
+
+// Plain "!gh <query>" suggestions become entities carrying the bang's icon, so the icon stays while typing.
+const withBangIcon = (request, results: any[], icon?: string) => {
+  const slug = request.query?.q?.match(/^!([\w-]+)\s/)?.[1]?.toLowerCase();
+  if (!icon || !slug) return results;
+  const json = request?.query?.type === "json";
+  const typeKey = json ? "suggestType" : "google:suggesttype", detailKey = json ? "suggestDetail" : "google:suggestdetail";
+  return results.map(item => item[typeKey] === "QUERY" && item.suggestion.toLowerCase().startsWith(`!${slug} `)
+    ? { ...item, [typeKey]: "ENTITY", [detailKey]: { ...item[detailKey], i: icon, dc: item[detailKey]?.dc || "#DE5833" } }
+    : item);
+};
 
 const sendReply = (request, results, reply) => {
 
@@ -84,9 +103,9 @@ const sendReply = (request, results, reply) => {
     ...acc, {...val, 
       [`${suggestDetail}`]: {
         ...(val[`${suggestDetail}`].template ? { "google:suggesttemplate": val[`${suggestDetail}`].template } : {}),
-        "google:entityinfo": val[`${suggestDetail}`].entityInfo || Buffer.from((new EntityInfo({
+        "google:entityinfo": Buffer.from((val[`${suggestDetail}`].entityInfo ? withOmniboxImage(val[`${suggestDetail}`].entityInfo, request.hostname) : new EntityInfo({
           name: val[`${suggestDetail}`].t,
-          imageUrl: ["ENTITY", "PERSON"].includes(val[`${suggestType}`]) ? val[`${suggestDetail}`].i : undefined,
+          imageUrl: ["ENTITY", "PERSON"].includes(val[`${suggestType}`]) ? omniboxImage(val[`${suggestDetail}`].i, request.hostname) : undefined,
           dominantColor: val[`${suggestDetail}`].dc,
           annotation: val[`${suggestDetail}`].a,
         }).toBinary())).toString('base64')
@@ -120,7 +139,7 @@ const header = (request.query?.client || 'chrome-omni')?.toLowerCase() === 'fire
     .type("text/javascript; charset=UTF-8")
     .send(`${header}${JSON.stringify(searchFormat)}`);
 };
-const fetchResult = async (signal: AbortSignal, request, results: any[], answerReady: () => void) => {
+const fetchResult = async (signal: AbortSignal, request, results: any[], answerReady: () => void, meta: { bangIcon?: string } = {}) => {
   const ax = axios.create({
     httpAgent, // httpAgent: httpAgent -> for non es6 syntax
     httpsAgent,
@@ -169,6 +188,19 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
       }, item.relevance);
     }
   }).catch(() => {});
+
+  // "!gh test": the bang's icon, for the plain query suggestions that follow it (see withBangIcon).
+  const bangIconTask = (async () => {
+    if (!bangQuery) return;
+    const slug = (bangSlug || "").toLowerCase();
+    const custom = getBangs(request.headers.cookie).find(s => s.aliases.includes(slug));
+    const builtIn = custom?.favicon ? `/icons/${custom.favicon}` : commandIcon(slug);
+    if (builtIn) { meta.bangIcon = builtIn.startsWith('/') ? `https://${request.hostname}${builtIn}` : builtIn; return; }
+    // DuckDuckGo bangs: reuse the lookup cached while "!a" was typed; a bang query never calls DuckDuckGo itself.
+    const ddg = httpCache.get<any[]>(`https://duckduckgo.com/ac/?q=${encodeURIComponent(`!${slug}`)}&format=json&pretty=0&no_redirect=1&kl=wt-wt`);
+    const image = Array.isArray(ddg) ? ddg.find(b => b?.phrase?.toLowerCase() === `!${slug}`)?.image : undefined;
+    if (image) meta.bangIcon = image.startsWith('http') ? image : `https://duckduckgo.com${image.startsWith('/') ? '' : '/'}${image}`;
+  })().catch(() => {});
 
   const richTask = getRichSuggestions(q, signal).then(richResults => {
     richResults.forEach((item, index) => {
@@ -368,13 +400,14 @@ const fetchResult = async (signal: AbortSignal, request, results: any[], answerR
       })(),
     ]);
   })();
-  await Promise.allSettled([richTask, googleTask, braveTask, cryptoTask, legacyTask]);
+  await Promise.allSettled([richTask, googleTask, braveTask, cryptoTask, legacyTask, bangIconTask]);
 };
 const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   fastify.get("/suggest", async function (request: any, reply) {
     if (typeof request.query.q !== 'string') return reply.header("Cache-Control", PRIVATE_SUGGEST_CACHE).code(400).send({ error: 'q must be a string' });
     const controller = new AbortController();
     const results: any[] = [];
+    const meta: { bangIcon?: string } = {};
     let deadline: ReturnType<typeof setTimeout>;
     const disconnected = () => controller.abort();
     reply.raw.once('close', disconnected);
@@ -382,7 +415,7 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
     const decisiveAnswer = new Promise<void>(resolve => { answerReady = resolve; });
     try {
       await Promise.race([
-        fetchResult(controller.signal, request, results, answerReady).catch(() => {}),
+        fetchResult(controller.signal, request, results, answerReady, meta).catch(() => {}),
         decisiveAnswer,
         new Promise<void>(resolve => { deadline = setTimeout(resolve, 700); }),
       ]);
@@ -390,7 +423,7 @@ const suggest: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
       const cacheControl = suggestCacheControl(request, results);
       reply.header("Cache-Control", cacheControl);
       if (cacheControl === PUBLIC_SUGGEST_CACHE) reply.header("Vary", BANGS_VARY);
-      return sendReply(request, results, reply);
+      return sendReply(request, withBangIcon(request, results, meta.bangIcon), reply);
     } finally {
       clearTimeout(deadline);
       reply.raw.removeListener('close', disconnected);

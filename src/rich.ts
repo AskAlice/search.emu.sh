@@ -158,6 +158,11 @@ const COMMANDS = [
   ["!ssl domain", "Inspect a domain TLS certificate"],
   ["!mailcheck domain", "Check MX, SPF, DMARC, and optional DKIM records"],
 ];
+/** Icon of a built-in !command (e.g. "gh"), so its query suggestions can show it too. */
+export const commandIcon = (slug: string) => {
+  const command = COMMANDS.find(([usage]) => usage.split(" ")[0] === `!${slug}`);
+  return command ? featureIcon({ suggestion: command[0], title: command[0].split(" ")[0], annotation: command[1] } as RichSuggestion) : undefined;
+};
 const discovery = (prefix: string): RichSuggestion[] => COMMANDS
   .filter(([usage]) => usage.slice(1).startsWith(prefix))
   .map(([usage, description]) => ({

@@ -30,7 +30,7 @@ t.test('Brave rich results, bang completions, and failure fallback', async t => 
   t.equal(json[0].suggestDetail.i,'https://example.com/einstein.jpg');
   const payload=JSON.parse((await app.inject('/suggest?q=albert&client=chrome-omni')).body.slice(5));
   const entity=EntityInfo.fromBinary(new Uint8Array(Buffer.from(payload[4]['google:suggestdetail'][0]['google:entityinfo'],'base64')));
-  t.equal(entity.name,'Albert Einstein');t.equal(entity.annotation,'Physicist');t.equal(entity.imageUrl,'https://example.com/einstein.jpg');
+  t.equal(entity.name,'Albert Einstein');t.equal(entity.annotation,'Physicist');t.match(entity.imageUrl,`/img?u=${encodeURIComponent('https://example.com/einstein.jpg')}&s=`);
   const before=calls;t.same(await braveSuggestions('x'.repeat(401)),[]);t.equal(calls,before);
   const originalFixture=axios.defaults.adapter as (config:any)=>Promise<any>;
   axios.defaults.adapter=async config=>{if(new URL(config.url!).hostname === 'api.search.brave.com')throw new Error('Brave plan unavailable');return originalFixture(config)};httpCache.flushAll();

@@ -34,7 +34,11 @@ t.test('entity data survives JSON, Chrome protobuf and Firefox responses', async
   t.equal(result.suggestDetail.website, 'https://example.com/');
   const chrome = await app.inject('/suggest?client=chrome-omni&q=fixture');
   const chromePayload = JSON.parse(chrome.body.slice(5));
-  t.equal(chromePayload[4]['google:suggestdetail'][0]['google:entityinfo'], bytes, 'original protobuf retained byte for byte');
+  // Every Google field survives; only the image moves behind the same-origin /img proxy (Brave draws nothing else).
+  const sent = EntityInfo.fromBinary(Buffer.from(bytes, 'base64'));
+  const forwarded = EntityInfo.fromBinary(Buffer.from(chromePayload[4]['google:suggestdetail'][0]['google:entityinfo'], 'base64'));
+  t.same({ ...forwarded, imageUrl: undefined }, { ...sent, imageUrl: undefined }, 'original protobuf fields retained');
+  if (sent.imageUrl) t.match(forwarded.imageUrl, `/img?u=${encodeURIComponent(sent.imageUrl)}&s=`, 'image proxied');
   t.same(chromePayload[4]['google:suggestsubtypes'][0], [512,433]);
   const firefox = JSON.parse((await app.inject('/suggest?client=firefox&q=fixture')).body);
   t.equal(firefox[3]['google:suggestdetail'][0].dc, '#123456');
