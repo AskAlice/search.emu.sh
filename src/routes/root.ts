@@ -15,22 +15,18 @@ const root: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   }
   // Declare a route
   const osd = (request, reply)  => {
+    // Firefox needs plain JSON suggestions (no XSSI prefix), which client=firefox selects.
+    const client = /Firefox/i.test(request.headers["user-agent"] || '') ? 'firefox' : 'chrome';
     reply.code(200).header("Content-Type", "application/opensearchdescription+xml; charset=utf-8").send(`<?xml version="1.0" encoding="UTF-8"?>
 <OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/"
     xmlns:moz="http://www.mozilla.org/2006/browser/search/">
-  <OutputEncoding>UTF-8</OutputEncoding>
-  <Image height="16" width="16" type="image/x-icon">https://${request.hostname}/favicon.ico</Image>
-  <Image height="16" width="16" type="image/vnd.microsoft.icon">https://${request.hostname}/favicon.ico</Image>
-  <Image height="512" width="512" type="image/png">https://${request.hostname}/logo512.png</Image>
-  <ShortName>search</ShortName>
-  <Description>[Search engine full name and summary]</Description>
+  <ShortName>emu search</ShortName>
+  <Description>emu search: bangs, rich suggestions and instant answers</Description>
   <InputEncoding>UTF-8</InputEncoding>
-  <Image height="16" width="16">https://${request.hostname}/favicon.ico</Image>
-  <Url  type="text/html"
-      method="GET"
-      template="https://${request.hostname}/search?client=${ /Firefox/i.test(request.headers["user-agent"]) ? 'firefox' : 'chrome'}&amp;q=%s"
-  />
-  <Url type="application/x-suggestions+json" method="GET" template="https://${request.hostname}/suggest?client=${ /Firefox/i.test(request.headers["user-agent"]) ? 'firefox' : 'chrome'}&amp;q=\{searchTerms\}" />
+  <OutputEncoding>UTF-8</OutputEncoding>
+  <Image height="16" width="16" type="image/svg+xml">https://${request.hostname}/favicon.svg</Image>
+  <Url type="text/html" method="GET" template="https://${request.hostname}/search?client=${client}&amp;q={searchTerms}" />
+  <Url type="application/x-suggestions+json" method="GET" template="https://${request.hostname}/suggest?client=${client}&amp;q={searchTerms}" />
 </OpenSearchDescription>`);
   }
   fastify.get("/osd.xml", osd);
